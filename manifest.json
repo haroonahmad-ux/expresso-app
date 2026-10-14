@@ -1,12 +1,25 @@
+
 {
-  "background_color": "#f7fafc",
-  "dir": "ltr",
+  "id": "/expresso-app/",
+  "name": "Expresso Pakistan Telecom & Lifestyle",
+  "short_name": "Expresso",
+  "description": "Expresso Pakistan Telecom & Lifestyle",
+  "start_url": "/expresso-app/",
+  "scope": "/expresso-app/",
   "display": "standalone",
-  "name": "haroonahmad-ux.github",
-  "orientation": "any",
-  "scope": "/",
-  "short_name": "haroonahmad-ux.github",
-  "start_url": "/",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
   "theme_color": "#00695c",
-  "description": "Expresso Pakistan Telecom &amp; Lifestyle"
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/haroonahmad-ux/expresso-app/main/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://raw.githubusercontent.com/haroonahmad-ux/expresso-app/main/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
 }

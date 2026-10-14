@@ -480,4 +480,27 @@
     state.claimedToday = true;
     save();
     render();
-    alert("Day " + state.streak + " streak bonus claimed! Valid for 72 hours
+      alert("Day " + state.streak + " streak bonus claimed! Valid for 72 hours.");
+  }
+
+          function logout() {
+  state.auth = false;
+  state.route = "home";
+  save();
+  render();
+}
+
+function askAi(question) {
+  state.aiChat.push({ sender: "You", text: question });
+  state.aiChat.push({
+    sender: "Expresso",
+    text: "Main Expresso demo assistant hoon. Aap apna sawal pooch sakte hain."
+  });
+  save();
+  render();
+}
+
+render();
+</script>
+</body>
+</html>

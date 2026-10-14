@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Expresso — Pakistan Telecom &amp; Lifestyle</title>
+  <style>
+    :root {
+      --primary: #00695c;
+      --primary-container: #e0f2f1;
+      --on-primary: #ffffff;
+      --secondary: #0d47a1;
+      --secondary-container: #e3f2fd;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --text-2: #475569;
+      --outline: #cbd5e1;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+    }
+    #app {
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      padding-bottom: 74px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.06);
+    }
+    header {
+      padding: 14px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--outline);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .brand-row { display: flex; align-items: center; gap: 10px; }
+    .brand-row svg { width: 36px; height: 36px; border-radius: 8px; }
+    .brand-title { font-size: 19px; font-weight: 800; color: var(--primary); margin: 0; }
+    .brand-sub { font-size: 11px; color: var(--text-2); margin: 0; }
+    main { padding: 16px; flex: 1; }
+    .card {
+      background: #ffffff;
+      border: 1px solid var(--outline);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .card.primary-box {
+      background: linear-gradient(135deg, #00695c, #004d40);
+      color: #ffffff;
+      border: none;
+    }
+    .card.primary-box .text-muted { color: #b2dfdb; }
+    .card.notice {
+      background: var(--secondary-container);
+      border: 1px solid #bbdefb;
+      font-size: 12px;
+      color: #0d47a1;
+      line-height: 1.45;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; }
+    .chips-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin: 10px 0; }
+    .chip {
+      background: #f1f5f9;
+      border: 1px solid var(--outline);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn.outline { background: transparent; border: 1.5px solid var(--outline); color: var(--text); }
+    .btn.secondary { background: var(--secondary); }
+    input, select {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1.5px solid var(--outline);
+      border-radius: 10px;
+      font-size: 14px;
+      margin: 6px 0 12px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+    .progress-track { background: #e2e8f0; border-radius: 6px; height: 8px; overflow: hidden; margin-top: 6px; }
+    .progress-fill { background: var(--primary); height: 100%; }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--primary-container);
+      color: var(--primary);
+    }
+    nav.bottom-bar {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      max-width: 480px;
+      height: 64px;
+      background: #ffffff;
+      border-top: 1px solid var(--outline);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 30;
+    }
+    .nav-btn {
+      background: none;
+      border: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-2);
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .nav-btn.active { color: var(--primary); }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand-row">
+      <svg viewBox="0 0 108 108">
+        <rect width="108" height="108" rx="20" fill="#00695c"/>
+        <path d="M12,64 L96,36 L96,84 A12,12 0 0,1 84,96 L24,96 A12,12 0 0,1 12,84 Z" fill="#0d47a1"/>
+        <path d="M34,32 L74,32 L74,41 L44,41 L44,49 L68,49 L68,58 L44,58 L44,67 L74,67 L74,76 L34,76 Z" fill="#ffffff"/>
+        <path d="M78,26 A16,16 0 0,1 86,40 L81,40 A11,11 0 0,0 75,30 Z" fill="#4db6ac"/>
+      </svg>
+      <div>
+        <h1 class="brand-title">Expresso</h1>
+        <p class="brand-sub">Pakistan Telecom &amp; Lifestyle</p>
+      </div>
+    </div>
+    <div id="topAction"></div>
+  </header>
+
+  <main id="mainContent"></main>
+
+  <nav class="bottom-bar" id="bottomNav">
+    <button class="nav-btn active" onclick="setRoute('home')"><span>🏠</span>Home</button>
+    <button class="nav-btn" onclick="setRoute('packages')"><span>📦</span>Bundles</button>
+    <button class="nav-btn" onclick="setRoute('discover')"><span>🧭</span>Discover</button>
+    <button class="nav-btn" onclick="setRoute('activity')"><span>📊</span>Activity</button>
+    <button class="nav-btn" onclick="setRoute('profile')"><span>👤</span>Profile</button>
+  </nav>
+</div>
+
+<script>
+  const DEFAULT_STATE = {
+    auth: false,
+    userName: "Customer",
+    msisdn: "+923001234567",
+    role: "CUSTOMER",
+    route: "home",
+    selectedSim: "+923001234567",
+    sims: [
+      { num: "+923001234567", name: "Primary SIM", bal: 840, dataMb: 28672, totMb: 40960, mins: 2450, sms: 2800 },
+      { num: "+923019876543", name: "Family SIM", bal: 210, dataMb: 0, totMb: 0, mins: 0, sms: 0 }
+    ],
+    selectedCat: "ALL",
+    tasbeeh: 0,
+    streak: 4,
+    claimedToday: false,
+    history: [
+      { id: "EXP-RCH-8842", type: "Top-up", amt: 1000, desc: "Sandbox Wallet Top-up" }
+    ],
+    aiChat: [
+      { sender: "Expresso", text: "Assalam-o-Alaikum! Main Expresso AI Assistant hoon. Mujh se apnay balance ya packages ke baray mein Roman Urdu mein poochein." }
+    ]
+  };
+
+  let state = Object.assign({}, DEFAULT_STATE);
+  try {
+    const raw = localStorage.getItem("expresso_app_state");
+    if (raw) state = Object.assign({}, DEFAULT_STATE, JSON.parse(raw));
+  } catch(e) {}
+
+  function save() {
+    try { localStorage.setItem("expresso_app_state", JSON.stringify(state)); } catch(e) {}
+  }
+
+  const PACKAGES = [
+    { id: "p1", name: "Daily Super Internet", cat: "DAILY", pkr: 65, mb: 2048, mins: 200, valid: "1 Day" },
+    { id: "p2", name: "Weekly Mega Pro", cat: "WEEKLY", pkr: 430, mb: 15360, mins: 1000, valid: "7 Days" },
+    { id: "p3", name: "Monthly Supreme 40GB", cat: "MONTHLY", pkr: 1350, mb: 40960, mins: 3000, valid: "30 Days" },
+    { id: "p4", name: "Weekly Voice Plus", cat: "CALL", pkr: 240, mb: 512, mins: 1500, valid: "7 Days" },
+    { id: "p5", name: "Social WhatsApp & YT", cat: "SOCIAL", pkr: 195, mb: 10240, mins: 100, valid: "7 Days" }
+  ];
+
+  function getActiveSim() {
+    return state.sims.find(s => s.num === state.selectedSim) || state.sims[0];
+  }
+
+  function setRoute(r) {
+    state.route = r;
+    save();
+    render();
+  }
+
+  function render() {
+    const nav = document.getElementById("bottomNav");
+    const topAction = document.getElementById("topAction");
+    const main = document.getElementById("mainContent");
+
+    if (!state.auth) {
+      nav.style.display = "none";
+      topAction.innerHTML = "";
+      main.innerHTML = `
+        <div class="card notice">
+          <b>TEST AUTHENTICATION MODE</b>: Enter any Pakistani number (e.g. 03001234567) and use test OTP: <b>482910</b>.
+        </div>
+        <div class="card">
+          <h2 style="margin:0 0 12px;font-size:18px;">Sign In to Expresso</h2>
+          <label style="font-size:12px;font-weight:700;">Your Name</label>
+          <input id="loginName" value="${state.userName}" placeholder="Hamza Tariq" />
+          <label style="font-size:12px;font-weight:700;">Mobile Number (+92)</label>
+          <input id="loginNum" value="03001234567" placeholder="03001234567" />
+          <div style="margin:8px 0 14px;">
+            <label style="font-size:12px;"><input type="checkbox" id="adminCheck"> Sign in as Retailer Admin (PIN: EXP-ADMIN-2026)</label>
+          </div>
+          <div id="otpSection" style="display:none;">
+            <label style="font-size:12px;font-weight:700;">Verification OTP (Test: 482910)</label>
+            <input id="otpCode" placeholder="482910" />
+            <button class="btn" style="width:100%;margin-top:6px;" onclick="verifyOtp()">Verify OTP &amp; Launch App</button>
+          </div>
+          <button id="sendOtpBtn" class="btn" style="width:100%;" onclick="requestOtp()">Send Verification OTP (+92)</button>
+        </div>
+      `;
+      return;
+    }
+
+    nav.style.display = "flex";
+    Array.from(nav.children).forEach((btn, idx) => {
+      const routes = ["home", "packages", "discover", "activity", "profile"];
+      btn.className = "nav-btn" + (state.route === routes[idx] ? " active" : "");
+    });
+
+    topAction.innerHTML = `<button class="btn outline" style="padding:4px 8px;font-size:11px;" onclick="setRoute('ai')">🤖 AI</button>`;
+
+    const sim = getActiveSim();
+
+    if (state.route === "home") {
+      main.innerHTML = `
+        <div class="row" style="margin-bottom:12px;">
+          <div>
+            <div style="font-size:13px;color:var(--text-2);">Assalam-o-Alaikum,</div>
+            <div style="font-size:18px;font-weight:800;">${state.userName}</div>
+          </div>
+          <select style="width:auto;margin:0;padding:6px 10px;font-size:12px;" onchange="state.selectedSim=this.value;save();render();">
+            ${state.sims.map(s => `<option value="${s.num}" ${s.num===state.selectedSim?'selected':''}>${s.name} (${s.num})</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="card primary-box">
+          <div class="text-muted" style="font-size:12px;font-weight:600;">SIMULATED BALANCE</div>
+          <div style="font-size:32px;font-weight:800;margin:6px 0;">PKR ${sim.bal.toFixed(2)}</div>
+          <div class="row">
+            <span class="text-muted" style="font-size:11px;">Active SIM: ${sim.num}</span>
+            <button class="btn" style="background:#fff;color:var(--primary);padding:6px 12px;font-size:12px;" onclick="setRoute('recharge')">+ Recharge</button>
+          </div>
+        </div>
+
+        ${sim.totMb > 0 ? `
+          <div class="card">
+            <div class="row"><b>Active Bundles</b><span class="badge">Valid 22 Days</span></div>
+            <div style="margin-top:12px;">
+              <div class="row" style="font-size:12px;"><span>Internet Data</span><b>${(sim.dataMb/1024).toFixed(1)} GB / ${(sim.totMb/1024).toFixed(1)} GB</b></div>
+              <div class="progress-track"><div class="progress-fill" style="width:${(sim.dataMb/sim.totMb)*100}%"></div></div>
+            </div>
+            <div style="margin-top:10px;">
+              <div class="row" style="font-size:12px;"><span>Voice Minutes</span><b>${sim.mins} Mins remaining</b></div>
+            </div>
+          </div>
+        ` : `
+          <div class="card" style="border-style:dashed;">
+            <b>No Active Bundle on ${sim.num}</b>
+            <p style="font-size:12px;color:var(--text-2);margin:4px 0 10px;">Base rates se bachne ke liye naya bundle lagayein.</p>
+            <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="setRoute('packages')">Explore Recommended Bundles</button>
+          </div>
+        `}
+
+        <div class="card">
+          <div class="row">
+            <div>
+              <b style="font-size:14px;">Daily Streak Reward</b>
+              <div style="font-size:12px;color:var(--text-2);">Day ${state.streak} • 72-Hour Bonus MB</div>
+            </div>
+            <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="claimStreak()" ${state.claimedToday?'disabled':''}>${state.claimedToday?'Claimed':'Check In'}</button>
+          </div>
+        </div>
+      `;
+    } else if (state.route === "packages") {
+      const cats = ["ALL", "DAILY", "WEEKLY", "MONTHLY", "CALL", "SOCIAL"];
+      const list = PACKAGES.filter(p => state.selectedCat === "ALL" || p.cat === state.selectedCat);
+      main.innerHTML = `
+        <h2 style="margin:0 0 10px;font-size:18px;">Bundles Explorer</h2>
+        <div class="chips-row">
+          ${cats.map(c => `<button class="chip ${state.selectedCat===c?'active':''}" onclick="state.selectedCat='${c}';render();">${c}</button>`).join("")}
+        </div>
+        ${list.map(p => `
+          <div class="card">
+            <div class="row"><b style="font-size:15px;">${p.name}</b><span class="badge">PKR ${p.pkr}</span></div>
+            <p style="font-size:12px;color:var(--text-2);margin:6px 0 10px;">${(p.mb/1024).toFixed(1)} GB Data • ${p.mins} Mins • ${p.valid}</p>
+            <button class="btn" style="width:100%;font-size:12.5px;" onclick="subscribePkg('${p.id}')">Subscribe (PKR ${p.pkr})</button>
+          </div>
+        `).join("")}
+      `;
+    } else if (state.route === "recharge") {
+      main.innerHTML = `
+        <h2 style="margin:0 0 10px;font-size:18px;">Sandbox Top-up</h2>
+        <div class="card">
+          <label style="font-size:12px;font-weight:700;">Recipient Number</label>
+          <input id="rchNum" value="${sim.num}" />
+          <label style="font-size:12px;font-weight:700;">Amount in PKR</label>
+          <input id="rchAmt" type="number" value="500" />
+          <div class="chips-row">
+            ${[100, 300, 500, 1000].map(a => `<button class="chip" onclick="document.getElementById('rchAmt').value='${a}'">Rs.${a}</button>`).join("")}
+          </div>
+          <button class="btn" style="width:100%;margin-top:10px;" onclick="doRecharge()">Confirm PKR Recharge</button>
+        </div>
+      `;
+    } else if (state.route === "discover") {
+      main.innerHTML = `
+        <h2 style="margin:0 0 10px;font-size:18px;">Discover &amp; Lifestyle</h2>
+        <div class="card">
+          <span class="badge">FAITH &amp; DHIKR</span>
+          <h3 style="margin:8px 0 4px;font-size:16px;">Interactive Digital Tasbeeh</h3>
+          <div style="font-size:32px;font-weight:800;color:var(--primary);margin:6px 0;">${state.tasbeeh} / 33</div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn" onclick="state.tasbeeh+=1;save();render();">+1 SubhanAllah</button>
+            <button class="btn outline" onclick="state.tasbeeh=0;save();render();">Reset</button>
+          </div>
+        </div>
+        <div class="card">
+          <span class="badge">FINANCE &amp; TAX</span>
+          <h3 style="margin:8px 0 4px;font-size:16px;">FBR Telecom Tax Certificate</h3>
+          <p style="font-size:12px;color:var(--text-2);margin:4px 0;">Annual 15% Advance Income Tax (Section 236): <b>PKR 1,420.50</b></p>
+        </div>
+      `;
+    } else if (state.route === "activity") {
+      main.innerHTML = `
+        <h2 style="margin:0 0 10px;font-size:18px;">Recent Activity</h2>
+        <div class="card">
+          <b>7-Day Telecom Usage Record (${sim.num})</b>
+          <div style="margin-top:10px;font-size:12.5px;">
+            <div class="row"><span>Data Usage</span><b>4.8 GB</b></div>
+            <div class="row" style="margin-top:6px;"><span>Voice Minutes</span><b>142 Mins</b></div>
+            <div class="row" style="margin-top:6px;"><span>SMS Sent</span><b>88 SMS</b></div>
+          </div>
+        </div>
+        <h3 style="font-size:15px;margin:12px 0 8px;">Transaction Receipts</h3>
+        ${state.history.map(h => `
+          <div class="card" style="padding:12px;">
+            <div class="row"><b>${h.type}</b><span class="badge">PKR ${h.amt}</span></div>
+            <div style="font-size:11px;color:var(--text-2);margin-top:4px;">Ref: ${h.id} • ${h.desc}</div>
+          </div>
+        `).join("")}
+      `;
+    } else if (state.route === "ai") {
+      main.innerHTML = `
+        <div class="row" style="margin-bottom:10px;">
+          <h2 style="margin:0;font-size:18px;">Expresso AI Assistant</h2>
+          <button class="btn outline" style="padding:4px 8px;font-size:11px;" onclick="setRoute('home')">Back</button>
+        </div>
+        <div class="chips-row">
+          <button class="chip" onclick="askAi('Mera remaining internet kitna hai?')">Remaining internet?</button>
+          <button class="chip" onclick="askAi('Mujhe monthly bundles dikhao')">Monthly bundles?</button>
+          <button class="chip" onclick="askAi('Sasta package suggest karo')">Sasta package?</button>
+        </div>
+        <div style="margin-bottom:12px;">
+          ${state.aiChat.map(m => `
+            <div class="card" style="padding:10px;margin-bottom:8px;background:${m.sender==='You'?'var(--primary-container)':'var(--surface)'};">
+              <div style="font-size:11px;font-weight:700;">${m.sender}</div>
+              <div style="font-size:13px;margin-top:2px;">${m.text}</div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    } else if (state.route === "profile") {
+      main.innerHTML = `
+        <h2 style="margin:0 0 10px;font-size:18px;">Profile &amp; Settings</h2>
+        <div class="card">
+          <b>${state.userName}</b>
+          <div style="font-size:12px;color:var(--text-2);margin:4px 0 10px;">Role: ${state.role} • SIM: ${state.selectedSim}</div>
+          <button class="btn outline" style="width:100%;font-size:12px;" onclick="logout()">Sign Out</button>
+        </div>
+      `;
+    }
+  }
+
+  function requestOtp() {
+    document.getElementById("otpSection").style.display = "block";
+    document.getElementById("sendOtpBtn").style.display = "none";
+  }
+
+  function verifyOtp() {
+    const name = document.getElementById("loginName").value;
+    const num = document.getElementById("loginNum").value;
+    const otp = document.getElementById("otpCode").value;
+    const isAdmin = document.getElementById("adminCheck").checked;
+
+    if (otp.trim() === "482910") {
+      state.auth = true;
+      state.userName = name || "Customer";
+      state.selectedSim = num.startsWith("+92") ? num : "+92" + num.replace(/^0/, "");
+      state.role = isAdmin ? "RETAILER_ADMIN" : "CUSTOMER";
+      state.route = "home";
+      save();
+      render();
+    } else {
+      alert("Invalid test OTP! Please enter 482910.");
+    }
+  }
+
+  function subscribePkg(pid) {
+    const pkg = PACKAGES.find(p => p.id === pid);
+    const sim = getActiveSim();
+    if (sim.bal >= pkg.pkr) {
+      sim.bal -= pkg.pkr;
+      sim.dataMb = (sim.dataMb || 0) + pkg.mb;
+      sim.totMb = (sim.totMb || 0) + pkg.mb;
+      sim.mins = (sim.mins || 0) + pkg.mins;
+      state.history.unshift({ id: "EXP-SUB-" + Math.floor(1000 + Math.random()*9000), type: "Bundle Activation", amt: pkg.pkr, desc: pkg.name });
+      save();
+      alert("Bundle " + pkg.name + " successfully activated!");
+      setRoute("home");
+    } else {
+      alert("Insufficient balance! Please recharge your account first.");
+    }
+  }
+
+  function doRecharge() {
+    const amt = parseFloat(document.getElementById("rchAmt").value) || 0;
+    if (amt > 0) {
+      const sim = getActiveSim();
+      sim.bal += amt;
+      state.history.unshift({ id: "EXP-RCH-" + Math.floor(1000 + Math.random()*9000), type: "Top-up", amt: amt, desc: "Sandbox Recharge" });
+      save();
+      alert("PKR " + amt + " recharge successful!");
+      setRoute("home");
+    }
+  }
+
+  function claimStreak() {
+    state.streak += 1;
+    state.claimedToday = true;
+    save();
+    render();
+    alert("Day " + state.streak + " streak bonus claimed! Valid for 72 hours

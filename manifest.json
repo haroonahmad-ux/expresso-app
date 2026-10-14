@@ -1,0 +1,12 @@
+{
+  "background_color": "#f7fafc",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "haroonahmad-ux.github",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "haroonahmad-ux.github",
+  "start_url": "/",
+  "theme_color": "#00695c",
+  "description": "Expresso Pakistan Telecom &amp; Lifestyle"
+}

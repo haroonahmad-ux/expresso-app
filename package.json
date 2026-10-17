@@ -1,0 +1,17 @@
+{
+  "name": "expresso-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Expresso Pakistan Telecom & Lifestyle - static PWA with Supabase authentication",
+  "type": "module",
+  "scripts": {
+    "test": "npm run test:rls && npm run test:static && npm run test:ui",
+    "test:rls": "node tests/auth-rls.test.mjs",
+    "test:static": "node tests/security-static.test.mjs",
+    "test:ui": "node tests/auth-ui.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "puppeteer-core": "^23.11.1"
+  }
+}

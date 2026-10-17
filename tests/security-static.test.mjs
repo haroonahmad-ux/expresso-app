@@ -77,6 +77,52 @@ check(
   `escapeHtml calls=${(html.match(/escapeHtml\(/g) || []).length}`
 );
 
+console.log('\nMigration hardening (static)');
+const migrationSql = readFileSync(
+  join(here, '..', 'supabase', 'migrations', '20261017120000_auth_profiles_rls.sql'),
+  'utf8'
+);
+check(
+  'revokes all table privileges before re-granting',
+  /revoke all on public\.profiles from public, anon, authenticated;/.test(migrationSql)
+);
+check(
+  'drops every pre-existing policy on profiles and packages',
+  /from pg_policies[\s\S]*?tablename in \('profiles', 'packages'\)[\s\S]*?drop policy if exists/.test(migrationSql)
+);
+check(
+  'grants column-level UPDATE on only full_name and msisdn',
+  /grant update \(full_name, msisdn\) on public\.profiles to authenticated;/.test(migrationSql)
+);
+check(
+  'never grants table-level UPDATE on profiles',
+  // table-level form is `grant update on ...`; the column form has `update (cols)`
+  !/grant (all|update)\s+on public\.profiles to authenticated;/i.test(migrationSql)
+);
+check(
+  'pins search_path to empty for SECURITY DEFINER functions',
+  (migrationSql.match(/set search_path = ''/g) || []).length >= 3,
+  `count=${(migrationSql.match(/set search_path = ''/g) || []).length}`
+);
+check(
+  'asserts the definer is not a client role',
+  /owned by a client role/.test(migrationSql)
+);
+check(
+  'verifies the admin identity instead of blindly promoting',
+  /has no auth\.users row/.test(migrationSql) &&
+    /authored by accounts/.test(migrationSql)
+);
+check(
+  'supports an explicit retailer-admin override',
+  /expresso\.retailer_admin_id/.test(migrationSql)
+);
+check(
+  'contains post-condition assertions',
+  /table-level UPDATE on public\.profiles still held by/.test(migrationSql)
+);
+check('uses no DROP TABLE / TRUNCATE / DELETE', !/\bdrop table\b|\btruncate\b|\bdelete from\b/i.test(migrationSql));
+
 console.log('\nInline script parses');
 const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)]
   .map((m) => m[1])

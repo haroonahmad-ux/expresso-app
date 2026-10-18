@@ -206,16 +206,77 @@
     ]
   };
 
-  let state = Object.assign({}, DEFAULT_STATE);
+  const ROUTES = ["home", "packages", "discover", "activity", "profile", "ai", "recharge"];
+  const CATEGORIES = ["ALL", "DAILY", "WEEKLY", "MONTHLY", "CALL", "SOCIAL"];
+
+  // localStorage is untrusted input: it is editable by anyone with access to the
+  // device and can hold values written by an older release. Every field is coerced
+  // to a known-good shape before render() runs, because a single malformed value
+  // (e.g. sims: null) would otherwise throw inside render() and blank the whole app.
+  function sanitizeSim(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    return {
+      num: typeof raw.num === "string" ? raw.num : "",
+      name: typeof raw.name === "string" ? raw.name : "SIM",
+      bal: safeNumber(raw.bal),
+      dataMb: safeNumber(raw.dataMb),
+      totMb: safeNumber(raw.totMb),
+      mins: safeNumber(raw.mins),
+      sms: safeNumber(raw.sms)
+    };
+  }
+
+  function sanitizeState(stored) {
+    const next = Object.assign({}, DEFAULT_STATE);
+    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return next;
+
+    next.auth = stored.auth === true;
+    if (typeof stored.userName === "string") next.userName = stored.userName;
+    if (typeof stored.role === "string") next.role = stored.role;
+    if (typeof stored.msisdn === "string") next.msisdn = stored.msisdn;
+    next.tasbeeh = Math.max(0, Math.floor(safeNumber(stored.tasbeeh)));
+    next.streak = Math.max(0, Math.floor(safeNumber(stored.streak)));
+    next.claimedToday = stored.claimedToday === true;
+    next.route = ROUTES.includes(stored.route) ? stored.route : DEFAULT_STATE.route;
+    next.selectedCat = CATEGORIES.includes(stored.selectedCat) ? stored.selectedCat : DEFAULT_STATE.selectedCat;
+
+    const sims = Array.isArray(stored.sims) ? stored.sims.map(sanitizeSim).filter(Boolean) : [];
+    next.sims = sims.length > 0 ? sims : DEFAULT_STATE.sims.map(s => Object.assign({}, s));
+    next.selectedSim = next.sims.some(s => s.num === stored.selectedSim)
+      ? stored.selectedSim
+      : next.sims[0].num;
+
+    next.history = stored.history === undefined
+      ? DEFAULT_STATE.history.map(h => Object.assign({}, h))
+      : (Array.isArray(stored.history) ? stored.history : [])
+        .filter(h => h && typeof h === "object")
+        .map(h => ({
+          id: String(h.id ?? ""),
+          type: String(h.type ?? ""),
+          amt: safeNumber(h.amt),
+          desc: String(h.desc ?? "")
+        }));
+
+    const chat = Array.isArray(stored.aiChat) ? stored.aiChat : null;
+    const cleanChat = chat
+      ? chat.filter(m => m && typeof m === "object")
+        .map(m => ({ sender: String(m.sender ?? ""), text: String(m.text ?? "") }))
+      : [];
+    next.aiChat = cleanChat.length > 0
+      ? cleanChat
+      : DEFAULT_STATE.aiChat.map(m => Object.assign({}, m));
+
+    return next;
+  }
+
+  let state;
   try {
     const raw = localStorage.getItem("expresso_app_state");
-    if (raw) {
-      const stored = JSON.parse(raw);
-      if (stored && typeof stored === "object" && !Array.isArray(stored)) {
-        state = Object.assign({}, DEFAULT_STATE, stored);
-      }
-    }
-  } catch(e) { /* Ignore corrupt or unavailable browser storage. */ }
+    state = sanitizeState(raw ? JSON.parse(raw) : null);
+  } catch(e) {
+    // Corrupt JSON or unavailable storage: fall back to the default state.
+    state = sanitizeState(null);
+  }
 
   // All values interpolated into HTML must be escaped, including values loaded from localStorage.
   function escapeHtml(value) {
@@ -255,6 +316,10 @@
     const nav = document.getElementById("bottomNav");
     const topAction = document.getElementById("topAction");
     const main = document.getElementById("mainContent");
+
+    // setRoute() accepts any string (it is also reachable from inline handlers),
+    // so an unknown route must degrade to Home instead of rendering nothing.
+    if (!ROUTES.includes(state.route)) state.route = "home";
 
     if (!state.auth) {
       nav.style.display = "none";
@@ -344,7 +409,7 @@
         </div>
       `;
     } else if (state.route === "packages") {
-      const cats = ["ALL", "DAILY", "WEEKLY", "MONTHLY", "CALL", "SOCIAL"];
+      const cats = CATEGORIES;
       const list = PACKAGES.filter(p => state.selectedCat === "ALL" || p.cat === state.selectedCat);
       main.innerHTML = `
         <h2 style="margin:0 0 10px;font-size:18px;">Bundles Explorer</h2>
@@ -530,7 +595,12 @@ render();
     });
   }
 </script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Pinned to an exact version with an SRI digest so the CDN cannot silently
+       change the code that runs in users' browsers. crossorigin is required for
+       the integrity check to be enforced on a cross-origin script. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"
+          integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK"
+          crossorigin="anonymous"></script>
 <script>
 const SUPABASE_URL = "https://ryimialrkhmnceupzptg.supabase.co";
 const SUPABASE_KEY = "sb_publishable_UFoJamn09mmH7HLChSzuJg_1LXj1IIq";

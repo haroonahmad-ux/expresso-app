@@ -6,6 +6,12 @@ Supersedes: `docs/chapter-2-audit.md` (kept unchanged; this is the updated compa
 Report type: read-only design review. No migration executed, no Supabase configuration
 changed, no production record modified, no application code changed, nothing merged to `main`.
 
+Revision 2 (finalisation). This revision records one **approved owner decision** — the
+`public.packages` access rule — and completes the design documentation for phone OTP,
+eligibility, database-backed authorization, RLS policies, API access, migration safety and the
+security test matrix. The decision is **approved but not implemented**: it is a Chapter 3 change.
+Nothing in this revision alters code, policies, migrations or production state.
+
 Evidence labels:
 
 | Label | Meaning |
@@ -34,6 +40,10 @@ Two premise details do not match the repository, and are corrected here rather t
    `26a760d`. It is now `47bbc4b` (PR #1, Chapter 1 merged). This is a change made by the
    owner through GitHub, not by this work. It is recorded here as fact.
 
+3. **One previously-open decision is now approved.** The `public.packages` access rule (Q-8) was
+   resolved by the owner in Revision 2: **authenticated-only; anonymous access is prohibited.**
+   See §5.2. It is recorded as an approved decision, not as an implemented or verified change.
+
 ---
 
 ## 1. Executive summary
@@ -60,11 +70,32 @@ What blocks a PASS:
   the PWA. Re-confirmed with `git merge-tree`.
 - **H-1/H-2** — no OTP implementation exists and phone auth is disabled live, so the OTP design
   cannot be tested end to end.
-- **Q-1, Q-2, Q-3, Q-5, Q-6** — owner decisions (admin id, OTP channel/provider, backups,
-  owner-level DB access) remain open.
+- **Q-1 … Q-7** — seven owner decisions remain open (admin id, OTP channel/provider,
+  eligibility source, backups, owner-level DB access, deployment ordering).
 
-**Chapter 2 status: PARTIAL PASS** — design review complete; production hardening and OTP are
-Chapter 3, and five owner decisions are outstanding.
+What was decided this revision:
+
+- **Q-8 (approved):** `public.packages` is readable by `authenticated` users only; anonymous
+  access is prohibited. **Approved but not implemented** — it closes C-1 only when the
+  migration is applied.
+
+**Chapter 2 status: PARTIAL PASS (design complete).** The design work is finished, but
+implementation and live verification are out of scope here and are **not** claimed as done. Seven
+owner decisions remain open, C-1 is still live, and every OTP test is still **NOT RUN**.
+
+### 1.1 Design completion vs implementation vs live verification
+
+Chapter 2 is a design chapter. These three states must not be conflated:
+
+| State | Meaning | What is in this state |
+|---|---|---|
+| **Design complete** | The approach is specified well enough to build and test | OTP architecture, eligibility model, authorization model, RLS catalogue, API access rules, migration safety principles, test matrix, decision register |
+| **Implemented** | Code, policies or config exist in a branch or project | Only the *existing* auth client and migration draft (from earlier chapters). The OTP design, eligibility hook and the Q-8 policy change are **not implemented** |
+| **Live verified** | Confirmed against the running production project | Live schema probes and anon-access probes only. No OTP flow, no migration apply, no post-migration audit |
+
+**Not claimed anywhere in this report:** that Chapter 2 implementation is complete, or that any
+live security test has passed. Tests marked **NOT RUN** (T-20…T-31) remain not run; T-17
+remains a live **FAIL**. The approved Q-8 decision is a *decision*, not a deployed control.
 
 ---
 
@@ -138,6 +169,54 @@ Legend: `SRC` = VERIFIED FROM SOURCE · `LIVE` = VERIFIED AGAINST LIVE DATABASE 
 **Design conclusion:** authorization is correctly centralised in the database. The client gate
 (`isAdmin()`) is UX only, which is the right separation. `VERIFIED FROM SOURCE`.
 
+### 3.1 Database-backed authorization model (design) `VERIFIED FROM SOURCE`
+
+Authorization is a function of database state only. The client never holds a role it can assert.
+
+| Element | Definition | Where it lives |
+|---|---|---|
+| Role vocabulary | `CUSTOMER`, `RETAILER_ADMIN` | `profiles.role` + `profiles_role_check` |
+| Default role | `CUSTOMER` on every signup | `handle_new_user()` trigger |
+| Admin predicate | `is_retailer_admin()` returns true iff the caller's `profiles.role = 'RETAILER_ADMIN'` and `is_active` | `public.is_retailer_admin()`, `SECURITY DEFINER` |
+| Identity | `auth.uid()` from the JWT | Supabase Auth |
+| Role source | `profiles` row keyed by `auth.uid()` | `profiles` table |
+
+Three independent enforcement layers block self-promotion (all `VERIFIED FROM SOURCE`):
+
+1. **Provisioning** — `handle_new_user()` hard-codes `role = 'CUSTOMER'` and ignores any
+   client-supplied `role` in `raw_user_meta_data`. (Test T-02.)
+2. **Column privileges** — `authenticated` holds column-level `UPDATE` on `full_name` and
+   `msisdn` only; `role`, `is_active` and `email` are excluded. (Tests T-03, T-04.)
+3. **Domain constraint** — `profiles_role_check` rejects any value outside the vocabulary.
+   (Test T-13.)
+
+### 3.2 RLS policy catalogue (design) `VERIFIED FROM SOURCE`
+
+| Policy | Table | Command | Roles | Using / With check |
+|---|---|---|---|---|
+| `profiles_select_own` | `profiles` | `SELECT` | `authenticated` | `id = auth.uid() OR public.is_retailer_admin()` |
+| `profiles_update_own` | `profiles` | `UPDATE` | `authenticated` | `using id = auth.uid()` / `with check id = auth.uid()` |
+| `packages_select_authenticated` | `packages` | `SELECT` | `authenticated` | `is_enabled OR public.is_retailer_admin()` |
+| `packages_admin_write` | `packages` | `ALL` | `authenticated` | `using public.is_retailer_admin()` / `with check public.is_retailer_admin()` |
+
+RLS is **enabled** on both tables. Every pre-existing policy is dropped before these four are
+created, because RLS policies are OR-ed and one surviving permissive policy defeats the set.
+Table privileges are revoked from `public`, `anon` and `authenticated`, then re-granted at least
+privilege (`SELECT`, plus column-scoped `UPDATE(full_name, msisdn)`). `anon` holds **no** policy
+and **no** privilege, which is exactly the state the approved Q-8 decision requires.
+
+### 3.3 Authorization decision flow (design)
+
+```
+request -> Supabase Auth (JWT with auth.uid())
+        -> PostgREST -> table privilege check (column-level)
+                     -> RLS policy evaluation (profiles / packages)
+                        -> is_retailer_admin() (SECURITY DEFINER, search_path='')
+```
+
+A denial can occur at the privilege layer (no column grant) or the policy layer (row predicate),
+and both are enforced by Postgres, not by the client.
+
 ---
 
 ## 4. Recommended OTP architecture and API contracts
@@ -208,6 +287,39 @@ Rationale grounded in this repository:
 `NOT VERIFIED`: none of these contracts exist in the repository — there is no `supabase/functions/`,
 no `config.toml`, and no OTP code. `VERIFIED FROM SOURCE`.
 
+### 4.5 Eligibility check design (design only)
+
+Eligibility decides whether an MSISDN may obtain an account at all.
+
+| Aspect | Design |
+|---|---|
+| Enforcement point | **Before User Created hook** (Postgres function or HTTP endpoint), so an ineligible number never becomes an `auth.users` row |
+| Source of truth | Owner-supplied eligibility list (Q-4). Not present in the repository |
+| Candidate storage | A dedicated table (e.g. `eligible_msisdn`) or a column on a retailer-managed table, read by the hook with `SECURITY DEFINER` |
+| Normalisation | E.164 format (`+92…`) before comparison; reject malformed numbers as `422` |
+| Failure mode | Hook returns an error object → signup denied, no user created, no OTP sent |
+| Bypass resistance | Supabase Auth is the only issuer; there is no custom endpoint to call directly |
+| Uniqueness | A unique constraint on `profiles.msisdn` prevents one number mapping to many accounts |
+
+**Important:** `profiles.msisdn` is currently client-writable (it is in the `UPDATE` grant). If it
+is ever used as an eligibility key, that write path must be revisited — recorded here as a
+design note, not a change.
+
+### 4.6 API access design (design only)
+
+| Surface | Base | Auth | Notes |
+|---|---|---|---|
+| Data (profiles, packages) | `/rest/v1/` | `apikey` + `Authorization: Bearer <access_token>` | RLS + column privileges decide access |
+| OTP request | `/auth/v1/otp` | `apikey` only | No session required |
+| OTP verify | `/auth/v1/verify` | `apikey` only | Returns a session on success |
+| Token refresh | `/auth/v1/token?grant_type=refresh_token` | `apikey` + refresh token | Single-use refresh token |
+| Settings (read) | `/auth/v1/settings` | `apikey` only | Used by this audit |
+
+Rules: the browser ships the publishable key only; the `service_role` key is never used in the
+client; `anon` reaches no table (Q-8). Session tokens are held by the Supabase client with
+`persistSession` and `autoRefreshToken`. Error surfaces must map database errors to safe messages
+rather than echoing raw Postgres text (see M-4).
+
 ---
 
 ## 5. Public packages finding and recommended resolution
@@ -220,7 +332,11 @@ unchanged from the earlier audit. This reconfirms C-1.
 
 ### 5.2 Is the catalogue intended to be public?
 
-`OWNER DECISION REQUIRED`. The evidence is mixed:
+**APPROVED OWNER DECISION (Revision 2): `public.packages` must be readable by `authenticated`
+users only. Anonymous access is prohibited.**
+
+This resolves the earlier contradiction in favour of the migration's own policy
+(`packages_select_authenticated`) and test T-08. The evidence previously pointed both ways:
 
 - **Suggests public by design:** the catalogue is marketing content; the live anon read works; the
   earlier report characterises it as non-confidential; the products are consumer bundles.
@@ -228,7 +344,16 @@ unchanged from the earlier audit. This reconfirms C-1.
   grants reads to `authenticated` only, and a test (T-08) asserts anon reads are rejected. So the
   author's *intent* was authenticated-only.
 
-These two contradict. The question is therefore genuinely open.
+The owner has now chosen **authenticated-only**. Consequences recorded for Chapter 3:
+
+- The pre-login marketing page can no longer read the catalogue through the `anon` key. Any
+  marketing surface that needs bundle data must fetch it after authentication, or through a
+  separate owner-approved, column-limited public endpoint (a new decision, not covered here).
+- The intended end state **matches the migration as written**, so no additional policy work is
+  required — the fix for C-1 is simply to apply the existing migration.
+- **Status: APPROVED — NOT IMPLEMENTED.** Production is unchanged and anonymous reads still
+  succeed today (see §5.1). Applying it needs the owner-level connection (Q-6) and a backup
+  confirmation (Q-5).
 
 ### 5.3 Security impact, and why package data differs from customer data
 
@@ -245,17 +370,21 @@ not be ranked Critical on confidentiality grounds alone.
 
 | Option | Change | Trade-off |
 |---|---|---|
-| A — keep authenticated-only | Apply the migration as written | Catalogue hidden from the pre-login marketing page |
+| A — keep authenticated-only **SELECTED** | Apply the migration as written | Catalogue hidden from the pre-login marketing page |
 | B — make it intentionally public | A `for select using (is_enabled)` policy for `anon`, restrict columns via a view | Simplest UX; needs a column-limiting view to avoid future leaks |
 | C — public via a read-only view/API | Expose only safe columns (`title`, `price_pkr`, `validity_days`, …) | Cleanest separation; a small amount of extra schema work |
 
-**Recommendation:** decide A vs B/C first (owner). If the catalogue must be public, prefer **C**
-so only non-sensitive columns are ever exposed. Either way this is a policy change for Chapter 3.
+**Decision:** the owner selected **Option A — authenticated-only**. Anonymous access to
+`public.packages` is prohibited. Options B and C are rejected; a column-limited public surface
+would require a new, separate owner decision if one is ever needed.
 
 ### 5.5 Status
 
-**UNRESOLVED.** Reconfirmed live, intent unconfirmed, no policy changed, no production data
-touched. To be resolved by the owner's decision and implemented in Chapter 3.
+**DECISION APPROVED; IMPLEMENTATION PENDING.** No policy was changed and no production data was
+touched in this revision — the live anonymous read still succeeds (see §5.1). Because the
+approved end state equals the drafted migration, the fix is to apply it in Chapter 3 once Q-5 and
+Q-6 are resolved. Risk C-1 therefore stays **open until the migration is applied**, and test T-17
+stays **FAILING** until then.
 
 ---
 
@@ -377,6 +506,22 @@ Chapter 1. `VERIFIED FROM SOURCE`. This is C-2.
 - **Data preservation:** 5 `packages` rows and existing `profiles` rows survive — no `DELETE`,
   `TRUNCATE`, or `DROP TABLE` anywhere in the migration. `VERIFIED FROM SOURCE`.
 
+### 7.5 Migration safety design principles (design)
+
+| Principle | How the migration satisfies it |
+|---|---|
+| Additive by default | `create table if not exists`, `add column if not exists` |
+| Idempotent | Re-running is a no-op for schema; policies and grants are re-created deterministically |
+| Self-verifying | Inline `raise exception` post-conditions (sections 5, 7, 9) abort on failure |
+| Atomic | Single `begin; … commit;`; any `raise exception` rolls the whole file back |
+| Non-destructive to data | No `DELETE` / `TRUNCATE` / `DROP TABLE` |
+| Fails safe on identity | Admin promotion aborts if the account is unverifiable |
+| Reversible-in-plan | No down-migration; recovery is by snapshot/PITR (Q-5) |
+
+Known limitations to carry into Chapter 3: sections 6 and 7 intentionally replace unknown live
+policy/grant state (M-1); section 1 rewrites unexpected role values to `CUSTOMER` (M-2); and the
+empty-catalogue branch uses `raise warning` and continues rather than aborting.
+
 ---
 
 ## 8. Owner decisions still required
@@ -390,7 +535,12 @@ Chapter 1. `VERIFIED FROM SOURCE`. This is C-2.
 | Q-5 | Are backups/PITR enabled? | No | **OWNER DECISION REQUIRED** | No rollback path if the migration goes wrong |
 | Q-6 | Owner-level DB connection available to apply the migration? | No | **OWNER DECISION REQUIRED** | Migration cannot be applied; C-1/H-3 persist |
 | Q-7 | Migration before or after the Chapter 1 frontend? | Partly: H-3 shows the client needs `is_active` | **OWNER DECISION REQUIRED** | Wrong order leaves the client falling back to `CUSTOMER` |
-| Q-8 | Public or authenticated-only catalogue? | No (see §5.2) | **OWNER DECISION REQUIRED** | C-1 remains open |
+| Q-8 | Public or authenticated-only catalogue? | **Resolved in Revision 2** — see §5.2 | **APPROVED (not implemented)** | None; C-1 closes when the migration is applied |
+
+**Decision recorded:** Q-8 — *`public.packages` is readable by `authenticated` users only;
+anonymous access is prohibited.* Approved by the owner, **not yet implemented** (Chapter 3).
+
+**Still open: Q-1, Q-2, Q-3, Q-4, Q-5, Q-6, Q-7** (seven decisions).
 
 ### Minimum access needed, and how to grant it safely
 
@@ -408,8 +558,10 @@ Chapter 1. `VERIFIED FROM SOURCE`. This is C-2.
 ## 9. Risk register
 
 ### Critical
-- **C-1 — Live `packages` is anonymously readable (5 rows).** Reconfirmed. Fixing migration not
-  applied. Confidentiality impact is bounded (marketing data; writes already blocked). `LIVE`
+- **C-1 — Live `packages` is anonymously readable (5 rows).** Reconfirmed. The owner has now
+  approved authenticated-only access (Q-8), but the fixing migration is **not applied**, so the
+  exposure is still live today. Confidentiality impact is bounded (marketing data; writes already
+  blocked). Closes when the migration is applied. `LIVE`
 - **C-2 — Merging the feat branch into `main` would revert Chapter 1 and break the PWA.**
   Reconfirmed via `git merge-tree`; `sw.js` absent, no `sanitizeState`, no SRI. `SRC`
 
@@ -448,19 +600,26 @@ Chapter 1. `VERIFIED FROM SOURCE`. This is C-2.
 | C-1 (public packages) reconfirmed and scoped | **Done** |
 | C-2 (merge regression) reconfirmed | **Done** |
 | Owner decision register produced | **Done** |
+| Design documented: phone OTP, eligibility, authorization, RLS, API access, migration safety | **Done (design)** |
+| Q-8 packages access rule decided | **Approved — not implemented** |
 | Admin-account existence verified in `auth.users` | **Not verified — Q-1** |
 | Live policy/grant/function catalogue inspected | **Not verified — no DB credential** |
 | OTP implemented | **Not implemented — Chapter 3** |
 | Migration applied to production | **Not applied — out of scope** |
 
-**Chapter 2 status: PARTIAL PASS.**
+**Chapter 2 status: PARTIAL PASS (design complete).**
 
-Every design-review task is complete. The chapter cannot be marked PASS because (a) critical
-compatibility fact C-2 must be resolved before any auth merge, (b) C-1 remains an open production
-exposure pending an owner decision, (c) Q-1, Q-2, Q-3, Q-5 and Q-6 are unresolved owner
-decisions, and (d) no live database credential was available for catalogue-level verification.
-A committed report is not proof that the backend is secure; the live database is still
-unhardened.
+All Chapter 2 **design** work is complete, including the one approved decision (Q-8). The chapter
+is not PASS because implementation and live verification are explicitly out of scope here:
+
+(a) C-2 must be resolved before any auth merge; (b) C-1 is still an open live exposure until the
+approved policy is applied; (c) seven owner decisions (Q-1–Q-7) remain open; (d) no live
+database credential was available for catalogue-level verification; and (e) the OTP design,
+eligibility checks and API contracts are documented but **not implemented**, so every OTP test
+(T-20…T-29) is still **NOT RUN**.
+
+A committed report is not proof that the backend is secure. No live security test is claimed to
+have passed. The live database remains unhardened.
 
 ---
 
@@ -468,9 +627,10 @@ unhardened.
 
 1. Reconcile branches: forward-port Chapter 1 into the auth line; preserve `sw.js`,
    `sanitizeState`, SRI. Never merge the feat branch as-is (C-2).
-2. Obtain owner answers to Q-1, Q-5, Q-6, Q-8 and an owner-level connection.
+2. Obtain owner answers to Q-1 … Q-7 and an owner-level connection.
 3. Apply the migration to staging, then production with a snapshot; record post-conditions.
-4. Resolve C-1 per the owner's catalogue decision (prefer a column-limited view if public).
+4. C-1 is decided (Q-8: authenticated-only). Applying the migration in step 3 enforces it, which
+   closes C-1 and turns T-17 from FAIL to pass. No extra policy work is required.
 5. Enable the chosen OTP channel (Q-2/Q-3) and implement Option A with a Before User Created
    eligibility hook; add a `msisdn` uniqueness constraint.
 6. Add the OTP request/verify contracts and replace raw `alert(error.message)` with safe mapping.

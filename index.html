@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Expresso — Pakistan Telecom &amp; Lifestyle</title>
+  <meta name="theme-color" content="#00695c">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
   <link rel="manifest" href="./manifest.json">
   <style>
     :root {
@@ -207,8 +209,25 @@
   let state = Object.assign({}, DEFAULT_STATE);
   try {
     const raw = localStorage.getItem("expresso_app_state");
-    if (raw) state = Object.assign({}, DEFAULT_STATE, JSON.parse(raw));
-  } catch(e) {}
+    if (raw) {
+      const stored = JSON.parse(raw);
+      if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+        state = Object.assign({}, DEFAULT_STATE, stored);
+      }
+    }
+  } catch(e) { /* Ignore corrupt or unavailable browser storage. */ }
+
+  // All values interpolated into HTML must be escaped, including values loaded from localStorage.
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[ch]);
+  }
+
+  function safeNumber(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
 
   function save() {
     try { localStorage.setItem("expresso_app_state", JSON.stringify(state)); } catch(e) {}
@@ -247,7 +266,7 @@
         <div class="card">
           <h2 style="margin:0 0 12px;font-size:18px;">Sign In to Expresso</h2>
           <label style="font-size:12px;font-weight:700;">Your Name</label>
-          <input id="loginName" value="${state.userName}" placeholder="Hamza Tariq" />
+          <input id="loginName" value="${escapeHtml(state.userName)}" placeholder="Hamza Tariq" />
           <label style="font-size:12px;font-weight:700;">Mobile Number (+92)</label>
           <input id="loginNum" value="03001234567" placeholder="03001234567" />
           <div style="margin:8px 0 14px;">
@@ -279,18 +298,18 @@
         <div class="row" style="margin-bottom:12px;">
           <div>
             <div style="font-size:13px;color:var(--text-2);">Assalam-o-Alaikum,</div>
-            <div style="font-size:18px;font-weight:800;">${state.userName}</div>
+            <div style="font-size:18px;font-weight:800;">${escapeHtml(state.userName)}</div>
           </div>
           <select style="width:auto;margin:0;padding:6px 10px;font-size:12px;" onchange="state.selectedSim=this.value;save();render();">
-            ${state.sims.map(s => `<option value="${s.num}" ${s.num===state.selectedSim?'selected':''}>${s.name} (${s.num})</option>`).join("")}
+            ${state.sims.map(s => `<option value="${escapeHtml(s.num)}" ${s.num===state.selectedSim?'selected':''}>${escapeHtml(s.name)} (${escapeHtml(s.num)})</option>`).join("")}
           </select>
         </div>
 
         <div class="card primary-box">
           <div class="text-muted" style="font-size:12px;font-weight:600;">SIMULATED BALANCE</div>
-          <div style="font-size:32px;font-weight:800;margin:6px 0;">PKR ${sim.bal.toFixed(2)}</div>
+          <div style="font-size:32px;font-weight:800;margin:6px 0;">PKR ${safeNumber(sim.bal).toFixed(2)}</div>
           <div class="row">
-            <span class="text-muted" style="font-size:11px;">Active SIM: ${sim.num}</span>
+            <span class="text-muted" style="font-size:11px;">Active SIM: ${escapeHtml(sim.num)}</span>
             <button class="btn" style="background:#fff;color:var(--primary);padding:6px 12px;font-size:12px;" onclick="setRoute('recharge')">+ Recharge</button>
           </div>
         </div>
@@ -299,16 +318,16 @@
           <div class="card">
             <div class="row"><b>Active Bundles</b><span class="badge">Valid 22 Days</span></div>
             <div style="margin-top:12px;">
-              <div class="row" style="font-size:12px;"><span>Internet Data</span><b>${(sim.dataMb/1024).toFixed(1)} GB / ${(sim.totMb/1024).toFixed(1)} GB</b></div>
-              <div class="progress-track"><div class="progress-fill" style="width:${(sim.dataMb/sim.totMb)*100}%"></div></div>
+              <div class="row" style="font-size:12px;"><span>Internet Data</span><b>${(safeNumber(sim.dataMb)/1024).toFixed(1)} GB / ${(safeNumber(sim.totMb)/1024).toFixed(1)} GB</b></div>
+              <div class="progress-track"><div class="progress-fill" style="width:${Math.max(0, Math.min(100, safeNumber(sim.dataMb) / Math.max(1, safeNumber(sim.totMb)) * 100))}%"></div></div>
             </div>
             <div style="margin-top:10px;">
-              <div class="row" style="font-size:12px;"><span>Voice Minutes</span><b>${sim.mins} Mins remaining</b></div>
+              <div class="row" style="font-size:12px;"><span>Voice Minutes</span><b>${safeNumber(sim.mins)} Mins remaining</b></div>
             </div>
           </div>
         ` : `
           <div class="card" style="border-style:dashed;">
-            <b>No Active Bundle on ${sim.num}</b>
+            <b>No Active Bundle on ${escapeHtml(sim.num)}</b>
             <p style="font-size:12px;color:var(--text-2);margin:4px 0 10px;">Base rates se bachne ke liye naya bundle lagayein.</p>
             <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="setRoute('packages')">Explore Recommended Bundles</button>
           </div>
@@ -318,7 +337,7 @@
           <div class="row">
             <div>
               <b style="font-size:14px;">Daily Streak Reward</b>
-              <div style="font-size:12px;color:var(--text-2);">Day ${state.streak} • 72-Hour Bonus MB</div>
+              <div style="font-size:12px;color:var(--text-2);">Day ${safeNumber(state.streak)} • 72-Hour Bonus MB</div>
             </div>
             <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="claimStreak()" ${state.claimedToday?'disabled':''}>${state.claimedToday?'Claimed':'Check In'}</button>
           </div>
@@ -345,7 +364,7 @@
         <h2 style="margin:0 0 10px;font-size:18px;">Sandbox Top-up</h2>
         <div class="card">
           <label style="font-size:12px;font-weight:700;">Recipient Number</label>
-          <input id="rchNum" value="${sim.num}" />
+          <input id="rchNum" value="${escapeHtml(sim.num)}" />
           <label style="font-size:12px;font-weight:700;">Amount in PKR</label>
           <input id="rchAmt" type="number" value="500" />
           <div class="chips-row">
@@ -360,7 +379,7 @@
         <div class="card">
           <span class="badge">FAITH &amp; DHIKR</span>
           <h3 style="margin:8px 0 4px;font-size:16px;">Interactive Digital Tasbeeh</h3>
-          <div style="font-size:32px;font-weight:800;color:var(--primary);margin:6px 0;">${state.tasbeeh} / 33</div>
+          <div style="font-size:32px;font-weight:800;color:var(--primary);margin:6px 0;">${safeNumber(state.tasbeeh)} / 33</div>
           <div style="display:flex;gap:8px;">
             <button class="btn" onclick="state.tasbeeh+=1;save();render();">+1 SubhanAllah</button>
             <button class="btn outline" onclick="state.tasbeeh=0;save();render();">Reset</button>
@@ -376,7 +395,7 @@
       main.innerHTML = `
         <h2 style="margin:0 0 10px;font-size:18px;">Recent Activity</h2>
         <div class="card">
-          <b>7-Day Telecom Usage Record (${sim.num})</b>
+          <b>7-Day Telecom Usage Record (${escapeHtml(sim.num)})</b>
           <div style="margin-top:10px;font-size:12.5px;">
             <div class="row"><span>Data Usage</span><b>4.8 GB</b></div>
             <div class="row" style="margin-top:6px;"><span>Voice Minutes</span><b>142 Mins</b></div>
@@ -386,8 +405,8 @@
         <h3 style="font-size:15px;margin:12px 0 8px;">Transaction Receipts</h3>
         ${state.history.map(h => `
           <div class="card" style="padding:12px;">
-            <div class="row"><b>${h.type}</b><span class="badge">PKR ${h.amt}</span></div>
-            <div style="font-size:11px;color:var(--text-2);margin-top:4px;">Ref: ${h.id} • ${h.desc}</div>
+            <div class="row"><b>${escapeHtml(h.type)}</b><span class="badge">PKR ${escapeHtml(h.amt)}</span></div>
+            <div style="font-size:11px;color:var(--text-2);margin-top:4px;">Ref: ${escapeHtml(h.id)} • ${escapeHtml(h.desc)}</div>
           </div>
         `).join("")}
       `;
@@ -405,8 +424,8 @@
         <div style="margin-bottom:12px;">
           ${state.aiChat.map(m => `
             <div class="card" style="padding:10px;margin-bottom:8px;background:${m.sender==='You'?'var(--primary-container)':'var(--surface)'};">
-              <div style="font-size:11px;font-weight:700;">${m.sender}</div>
-              <div style="font-size:13px;margin-top:2px;">${m.text}</div>
+              <div style="font-size:11px;font-weight:700;">${escapeHtml(m.sender)}</div>
+              <div style="font-size:13px;margin-top:2px;">${escapeHtml(m.text)}</div>
             </div>
           `).join("")}
         </div>
@@ -415,8 +434,8 @@
       main.innerHTML = `
         <h2 style="margin:0 0 10px;font-size:18px;">Profile &amp; Settings</h2>
         <div class="card">
-          <b>${state.userName}</b>
-          <div style="font-size:12px;color:var(--text-2);margin:4px 0 10px;">Role: ${state.role} • SIM: ${state.selectedSim}</div>
+          <b>${escapeHtml(state.userName)}</b>
+          <div style="font-size:12px;color:var(--text-2);margin:4px 0 10px;">Role: ${escapeHtml(state.role)} • SIM: ${escapeHtml(state.selectedSim)}</div>
           <button class="btn outline" style="width:100%;font-size:12px;" onclick="logout()">Sign Out</button>
         </div>
       `;
@@ -502,16 +521,28 @@ function askAi(question) {
 }
 
 render();
+
+  // Register the same-origin service worker for installability and offline app-shell caching.
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js", { scope: "./" })
+        .catch(error => console.warn("Expresso offline support could not be enabled:", error));
+    });
+  }
 </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SUPABASE_URL = "https://ryimialrkhmnceupzptg.supabase.co";
 const SUPABASE_KEY = "sb_publishable_UFoJamn09mmH7HLChSzuJg_1LXj1IIq";
 
-const supabaseClient = window.supabase.createClient(
-  SUPABASE_URL,
-  SUPABASE_KEY
-);
+// Supabase's CDN library is not part of the offline app shell. Keep the app usable
+// when offline; backend integration is handled separately from this frontend-hardening chapter.
+let supabaseClient = null;
+if (window.supabase && typeof window.supabase.createClient === "function") {
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+} else {
+  console.warn("Supabase client library is unavailable; offline app-shell mode remains available.");
+}
 </script>
 </body>
 </html>

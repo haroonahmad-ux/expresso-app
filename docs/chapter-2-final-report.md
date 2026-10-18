@@ -12,6 +12,11 @@ eligibility, database-backed authorization, RLS policies, API access, migration 
 security test matrix. The decision is **approved but not implemented**: it is a Chapter 3 change.
 Nothing in this revision alters code, policies, migrations or production state.
 
+> **Companion — implementation.** The design in this document is now implemented on this branch.
+> See `docs/chapter-2-implementation-report.md` for the code changes, the exact commands run and
+> the recorded results (195 automated checks pass; the live C-1 probe still fails until the
+> migration is applied, because no database credential is available).
+
 Evidence labels:
 
 | Label | Meaning |

@@ -84,12 +84,34 @@ check('navigations fall back to the cached shell when offline', /catch\(\(\) => 
 check('only ok responses are cached for navigations', /if \(response && response\.ok\)/.test(sw));
 check('registration uses a relative sw.js and scope', /register\("\.\/sw\.js", \{ scope: "\.\/" \}\)/.test(html));
 
-console.log('\nExisting demo functionality preserved');
+console.log('\nPrimary routes preserved (Chapter 1 functionality)');
 for (const route of ['home', 'packages', 'discover', 'activity', 'profile']) {
   check(`route "${route}" still handled`, new RegExp(`state\\.route === "${route}"`).test(html));
 }
 check('sign-out handler preserved', /function logout\(/.test(html));
-check('demo OTP verification preserved', /function verifyOtp\(/.test(html));
-check('packages data preserved', /const PACKAGES = \[/.test(html));
+
+console.log('\nChapter 2: demo authentication removed, real Supabase Auth wired up');
+check('no demo OTP value 482910', !html.includes('482910'));
+check('no hardcoded admin PIN', !/EXP-ADMIN-2026/.test(html));
+check('no client-side admin checkbox', !/adminCheck/.test(html));
+check('no client-side requestOtp/verifyOtp', !/requestOtp|verifyOtp/.test(html));
+check('no "TEST AUTHENTICATION MODE" banner', !/TEST AUTHENTICATION MODE/.test(html));
+check('uses signInWithPassword', /auth\.signInWithPassword\(/.test(html));
+check('uses signUp', /auth\.signUp\(/.test(html));
+check('uses signOut', /auth\.signOut\(/.test(html));
+check('reads existing session on boot', /auth\.getSession\(/.test(html));
+check('subscribes to auth state changes', /onAuthStateChange\(/.test(html));
+check('persists the session', /persistSession:\s*true/.test(html));
+check('auto-refreshes the token', /autoRefreshToken:\s*true/.test(html));
+check('role is read from the profiles table', /from\(\s*["']profiles["']\s*\)/.test(html));
+check('admin check uses profile.role', /profile\.role\s*===\s*["']RETAILER_ADMIN["']/.test(html));
+check('role is never taken from user metadata', !/user_metadata[^\n]*\.role/.test(html));
+check('signUp does not send a role', !/options:\s*\{[^}]*data:\s*\{[^}]*role/.test(html));
+check('packages are loaded from the packages table', /from\(\s*["']packages["']\s*\)/.test(html));
+check('customer queries filter to enabled rows', /\.eq\(\s*["']is_enabled["']\s*,\s*true\s*\)/.test(html));
+check('legacy demo localStorage key is purged', /localStorage\.removeItem\(\s*["']expresso_app_state["']\s*\)/.test(html));
+check('identity is never restored from localStorage', /session,\s*profile and packages deliberately keep their default/.test(html));
+check('uses the publishable key only', /sb_publishable_/.test(html));
+check('admin route is guarded by the database role', /state\.route === "admin" && !isAdmin\(\)/.test(html));
 
 process.exit(report());

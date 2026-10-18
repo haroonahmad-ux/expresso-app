@@ -48,27 +48,39 @@ const TARGETS = [
 
 const { check, report } = createRunner('XSS regression');
 const srv = await startServer();
-const browser = await launchBrowser();
+
+// A fresh browser per target keeps the run within Chromium's per-process page
+// budget; a single long-lived browser accumulates 90+ contexts and the renderer
+// session is dropped mid-run, which would mask a real result as an error.
+async function scanTarget(target) {
+  const browser = await launchBrowser();
+  let executed = null;
+  try {
+    for (const payload of PAYLOADS) {
+      const page = await browser.newPage();
+      const state = JSON.parse(JSON.stringify(BASE_STATE));
+      target.apply(state, payload);
+      await page.evaluateOnNewDocument(s => {
+        localStorage.setItem('expresso_app_state', JSON.stringify(s));
+      }, state);
+      await page.goto(srv.base, { waitUntil: 'domcontentloaded' });
+      for (const route of ROUTES) {
+        await page.evaluate(r => { try { setRoute(r); } catch (e) {} }, route);
+        await new Promise(res => setTimeout(res, 40));
+        const hits = await page.evaluate(() => window.__xss || 0);
+        if (hits > 0) { executed = { payload, route }; break; }
+      }
+      await page.close();
+      if (executed) break;
+    }
+  } finally {
+    await browser.close().catch(() => {});
+  }
+  return executed;
+}
 
 for (const target of TARGETS) {
-  let executed = null;
-  for (const payload of PAYLOADS) {
-    const page = await browser.newPage();
-    const state = JSON.parse(JSON.stringify(BASE_STATE));
-    target.apply(state, payload);
-    await page.evaluateOnNewDocument(s => {
-      localStorage.setItem('expresso_app_state', JSON.stringify(s));
-    }, state);
-    await page.goto(srv.base, { waitUntil: 'domcontentloaded' });
-    for (const route of ROUTES) {
-      await page.evaluate(r => { try { setRoute(r); } catch (e) {} }, route);
-      await new Promise(res => setTimeout(res, 40));
-      const hits = await page.evaluate(() => window.__xss || 0);
-      if (hits > 0) { executed = { payload, route }; break; }
-    }
-    await page.close();
-    if (executed) break;
-  }
+  const executed = await scanTarget(target);
   check(
     `payload in ${target.name} does not execute`,
     executed === null,
@@ -77,6 +89,7 @@ for (const target of TARGETS) {
 }
 
 console.log('\nUntrusted state cannot break rendering');
+const browser = await launchBrowser();
 for (const [label, mutate] of [
   ['sims: null', s => { s.sims = null; }],
   ['sims: []', s => { s.sims = []; }],

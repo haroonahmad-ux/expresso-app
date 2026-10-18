@@ -3,17 +3,20 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Expresso Pakistan Telecom & Lifestyle - static PWA (Chapter 1 frontend hardening)",
+  "description": "Expresso Pakistan Telecom & Lifestyle - static PWA (Chapter 2: real Supabase Auth + RLS)",
   "scripts": {
-    "test": "npm run test:syntax && npm run test:static && npm run test:xss && npm run test:pwa && npm run test:ui",
+    "test": "npm run test:syntax && npm run test:static && npm run test:xss && npm run test:pwa && npm run test:ui && npm run test:rls",
     "test:syntax": "node tests/syntax.test.mjs",
     "test:static": "node tests/security-static.test.mjs",
     "test:xss": "node tests/xss.test.mjs",
     "test:pwa": "node tests/pwa-sw.test.mjs",
     "test:ui": "node tests/ui-regression.test.mjs",
+    "test:rls": "node tests/auth-rls.test.mjs",
+    "test:api-authz": "node tests/live-api-authz.test.mjs",
     "test:live": "node tests/live-smoke.test.mjs"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "puppeteer-core": "^23.11.1"
   }
 }

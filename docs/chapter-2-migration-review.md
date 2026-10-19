@@ -117,73 +117,178 @@ the signup trigger, but the gap is worth surfacing.
 
 ---
 
-## 4. Deployment sequence
+## 4. Pre-flight checks and deployment sequence
+
+Everything below is done in the **Supabase Dashboard → SQL Editor**. No command line is
+needed, so it works from a phone. Each SQL block is a single statement; select it, press
+Run, and read the one-row-per-check table.
 
 Both migrations are additive, idempotent and data-preserving (no `DROP TABLE`, `TRUNCATE` or
-`DELETE`). They are wrapped in `begin`/`commit`, so a failure rolls the whole script back.
+`DELETE`). Each is wrapped in `begin`/`commit`, so if anything fails, **nothing is committed**.
 
-### 4.1 Before you start (owner, read-only)
+### 4.0 Save a way back (do this first)
 
-1. Take a backup / confirm point-in-time recovery on the project.
-2. Record the pre-state:
-   ```sql
-   select id, role, is_active, full_name, msisdn from public.profiles;
-   select count(*) from public.packages;
-   select policyname from pg_policies where schemaname = 'public';
-   select grantee, privilege_type from information_schema.table_privileges
-     where table_schema = 'public' and table_name in ('profiles','packages');
-   select conname, pg_get_constraintdef(oid) from pg_constraint
-     where conrelid = 'public.profiles'::regclass;
-   ```
-3. **Pre-flight checks** (the migration will also check these, but confirm now):
-   - `public.profiles.id` has a primary key or unique constraint.
-   - `auth.users` contains `bdd8f73c-fd23-4d76-9d23-7f4942300c36`.
-   - That account's `profiles.role` **and** `profiles.is_active` are what you intend. If
-     `is_active` is `false`, decide whether to re-activate it; the migration will not.
-   - No bundle in `public.packages` has a `created_by` other than that account (a `null`
-     `created_by` is fine).
+1. Dashboard → **Database → Backups**. Confirm a recent backup exists, or that
+   point-in-time recovery is on. If neither, take a backup now and wait for it to finish.
+2. Open a notes app and paste the "before" values you are about to read in 4.2. If you need
+   to reconstruct the old state by hand, you will want them.
 
-### 4.2 Apply
+### 4.1 Pre-flight checks — all must PASS before you continue
 
-Order does not matter — both orderings were tested. The sequence below matches what has
-already happened live.
+Paste this as **one** statement and press Run. It prints one row per check. The same SQL
+is saved at `supabase/checks/preflight.sql`, so you can open that file and copy it in one go.
 
-1. `20261018120000_packages_anon_select_fix.sql` — **already applied.**
-2. `20261017120000_auth_profiles_rls.sql` — apply this next, via the Supabase SQL editor or
-   `psql "$SUPABASE_DB_URL" -f supabase/migrations/20261017120000_auth_profiles_rls.sql`.
-3. Re-run `20261018120000_packages_anon_select_fix.sql` if you want the explicit
-   `packages_anon_no_select` policy restored (the base migration removes it, because it drops
-   every policy on the table before installing its own). It is optional: anonymous access is
-   denied by the `REVOKE` either way. Re-running it is safe.
+```sql
+with admin as (
+  select 'bdd8f73c-fd23-4d76-9d23-7f4942300c36'::uuid as id
+)
+select '1. admin account exists in auth.users' as step,
+       case when exists (select 1 from auth.users u join admin a on u.id = a.id)
+            then 'PASS' else 'FAIL - check the UUID' end as result
+union all
+select '2. admin profile role',
+       coalesce((select case when p.role = 'RETAILER_ADMIN' then 'PASS'
+                             else 'FAIL - role is ' || p.role end
+                 from public.profiles p join admin a on p.id = a.id),
+                'FAIL - no profiles row yet (will be created)')
+union all
+select '3. admin is_active',
+       coalesce((select case when p.is_active then 'PASS'
+                             else 'FAIL - false locks the admin out' end
+                 from public.profiles p join admin a on p.id = a.id),
+                'FAIL - no profiles row yet (will be created)')
+union all
+select '4. profiles.id is unique',
+       case when exists (
+              select 1 from pg_index i
+              join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+              where i.indrelid = 'public.profiles'::regclass
+                and i.indisunique and i.indnatts = 1 and a.attname = 'id')
+            then 'PASS' else 'FAIL - run: ALTER TABLE public.profiles ADD PRIMARY KEY (id);' end
+union all
+select '5. catalogue authored only by the admin',
+       case when exists (select 1 from public.packages p join admin a on true
+                         where p.created_by is not null and p.created_by <> a.id)
+            then 'FAIL - another account authored a bundle' else 'PASS' end
+union all
+select '6. role values inside the domain',
+       case when exists (select 1 from public.profiles
+                         where role is null or role not in ('CUSTOMER','RETAILER_ADMIN'))
+            then 'NOTE - odd values are normalised to CUSTOMER' else 'PASS' end
+order by step;
+```
 
-If the migration aborts, nothing is committed. Read the exception message; each one names the
-exact remedy.
+How to read it:
 
-### 4.3 After applying (owner, read-only)
+| Step | PASS means | If it fails |
+|---|---|---|
+| 1 | the admin UUID exists in `auth.users` | the UUID is wrong for this project. Stop; do not run the migration. |
+| 2 | the admin's role is `RETAILER_ADMIN` | usually just "no row yet" — the migration creates it. Any other role is a surprise worth investigating first. |
+| 3 | `is_active` is `true` | **`false` locks the admin out.** The migration sets the role but never flips `is_active`. Decide first: see 4.3. |
+| 4 | `profiles.id` has a primary key or unique constraint | run the `ALTER TABLE ... ADD PRIMARY KEY (id);` shown in the result, then re-run 4.1. |
+| 5 | every bundle was authored by the admin, or `created_by` is `null` | the migration will refuse to run. Do not force it; find out who authored the bundle. |
+| 6 | all roles are already in the domain | `NOTE` is fine — the migration normalises odd values to `CUSTOMER`. |
+
+**Do not run the migration unless steps 1, 3, 4 and 5 all say PASS.**
+
+### 4.2 Record the "before" state (read-only, optional but wise)
+
+```sql
+select id, role, is_active, full_name, msisdn from public.profiles order by role;
+```
+
+```sql
+select count(*) as package_count from public.packages;
+```
+
+Write both results down. `package_count` should be the same after the migration.
+
+### 4.3 The `is_active` decision (only if step 3 failed)
+
+The migration deliberately does **not** re-activate a disabled account: turning an account
+back on is an access decision, not a schema change. If step 3 reported
+`FAIL - false locks the admin out`, choose one:
+
+- **Intended to be active** — run this one statement, then re-run 4.1:
+  ```sql
+  update public.profiles set is_active = true
+   where id = 'bdd8f73c-fd23-4d76-9d23-7f4942300c36';
+  ```
+- **Intended to stay disabled** — continue anyway. The migration still succeeds and sets the
+  role, but the account stays locked out, and step 3 of 4.5 will keep failing until you
+  change it. This is a real state, not an error in the migration.
+
+### 4.4 Apply the migration
+
+1. Confirm `20261018120000_packages_anon_select_fix.sql` is already applied. (It is, per the
+   live check that all nine authorization probes pass.)
+2. In the SQL Editor, open the file
+   `supabase/migrations/20261017120000_auth_profiles_rls.sql` from the branch, copy the
+   **whole** file, paste it, and press Run.
+3. The script runs inside one transaction. If it aborts, **nothing was changed**. The error
+   message names the exact remedy — the three possible ones are the checks in 4.1.
+4. Optional: re-run `20261018120000_packages_anon_select_fix.sql`. The base migration removes
+   the explicit `packages_anon_no_select` policy (it drops every policy on the table before
+   installing its own), so this restores that visible deny policy. Anonymous access is denied
+   by the `REVOKE` either way, so this is cosmetic. Re-running it is safe.
+
+### 4.5 Verify after applying
 
 ```sql
 select id, role, is_active from public.profiles
-  where id = 'bdd8f73c-fd23-4d76-9d23-7f4942300c36';   -- expect RETAILER_ADMIN, is_active true
-select count(*) from public.packages;                    -- unchanged
-select policyname from pg_policies
-  where schemaname = 'public' and tablename in ('profiles','packages');
-select grantee, privilege_type, column_name
-  from information_schema.column_privileges
-  where table_schema = 'public' and table_name = 'profiles'
-    and grantee = 'authenticated' and privilege_type = 'UPDATE';  -- full_name, msisdn, phone only
+ where id = 'bdd8f73c-fd23-4d76-9d23-7f4942300c36';
 ```
+Expect `RETAILER_ADMIN` and `is_active = true`. If `is_active` is still `false`, revisit 4.3.
 
-Then re-run the live probe, which should still report 9/9:
+```sql
+select count(*) as package_count from public.packages;
+```
+Must equal the 4.2 value.
+
+```sql
+select policyname from pg_policies
+ where schemaname = 'public' and tablename in ('profiles','packages') order by policyname;
+```
+Expect exactly `packages_admin_write`, `packages_select_authenticated`, `profiles_select_own`,
+`profiles_update_own` (plus `packages_anon_no_select` if you re-ran the anon-fix).
+
+```sql
+select column_name from information_schema.column_privileges
+ where table_schema = 'public' and table_name = 'profiles'
+   and grantee = 'authenticated' and privilege_type = 'UPDATE'
+ order by column_name;
+```
+Expect exactly `full_name`, `msisdn`, `phone`.
+
+The verification statements above are also saved together at `supabase/checks/postflight.sql`.
+
+Finally, from a machine with the repo, re-run the live probe — it should still report 9/9:
 
 ```bash
 npm run test:api-authz
 ```
 
-### 4.4 Rollback
+### 4.6 Rollback — read this before you start
 
-There is nothing to roll back in the data sense — no row is deleted and no column is dropped.
-To revert the access rules only, re-grant as needed and drop the four policies; but note that
-doing so re-opens the anonymous-read finding. Prefer fixing forward.
+**There is no data rollback, and that is by design — but it is also a one-way door for the
+access rules.**
+
+- Nothing is deleted or dropped, so there is no data to restore. Your 4.2 values are for
+  verification, not recovery.
+- The migration is **not** reversible with a "down" script. To undo it you would have to
+  hand-write the reverse: drop the four policies, drop the two triggers, drop the three
+  helper functions, re-grant the old table privileges, and re-add `NOT NULL` on
+  `full_name`/`msisdn`.
+- **The `NOT NULL` change is the sharpest edge.** Re-adding `NOT NULL` will fail if any row
+  now has a `null` `full_name` or `msisdn` — which is exactly what happens if the admin
+  profile had to be created. Reverting is therefore not guaranteed to be possible once the
+  migration has run.
+- Undoing the access rules also **re-opens the anonymous-read finding** on `public.packages`.
+  That is the vulnerability the earlier fix closed.
+
+Because of that, treat this as **fix-forward**: if something is wrong afterwards, correct it
+with a new migration rather than reverting. Rehearse the whole sequence on a staging project
+first if you can, since the SQL Editor offers no dry run.
 
 ---
 

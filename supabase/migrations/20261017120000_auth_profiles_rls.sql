@@ -59,6 +59,28 @@ alter table public.profiles
   alter column full_name DROP NOT NULL,
   alter column msisdn DROP NOT NULL;
 
+-- Every `on conflict (id)` below, and the signup trigger, require profiles.id to
+-- be unique. Some Supabase-dashboard projects create the table without a primary
+-- key, which makes those statements fail with a cryptic error. Assert it here and
+-- fail with an actionable message instead.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_index i
+    join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any (i.indkey)
+    where i.indrelid = 'public.profiles'::regclass
+      and i.indisunique
+      and i.indnatts = 1
+      and a.attname = 'id'
+  ) then
+    raise exception
+      'Expresso migration: public.profiles.id has no PRIMARY KEY or UNIQUE constraint. '
+      'The signup trigger and the admin promotion rely on ON CONFLICT (id). Add one '
+      'before applying: ALTER TABLE public.profiles ADD PRIMARY KEY (id);';
+  end if;
+end $$;
+
 -- Normalise any legacy/invalid role values before locking the domain down.
 update public.profiles set role = 'CUSTOMER'
   where role is null or role not in ('CUSTOMER', 'RETAILER_ADMIN');
@@ -66,18 +88,15 @@ update public.profiles set role = 'CUSTOMER'
 alter table public.profiles alter column role set default 'CUSTOMER';
 alter table public.profiles alter column role set not null;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'profiles_role_check'
-      and conrelid = 'public.profiles'::regclass
-  ) then
-    alter table public.profiles
-      add constraint profiles_role_check
-      check (role in ('CUSTOMER', 'RETAILER_ADMIN'));
-  end if;
-end $$;
+-- Guarantee the role domain. Any same-named constraint is dropped first: if the
+-- live project already has a `profiles_role_check` with a wider domain, an
+-- "add if missing" would leave that wider domain in force. The UPDATE above has
+-- already normalised every role value, so re-adding cannot fail on existing rows.
+-- (A differently named legacy CHECK can only narrow the domain further, never
+-- widen it, because CHECK constraints are AND-ed.)
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles
+  add constraint profiles_role_check check (role in ('CUSTOMER', 'RETAILER_ADMIN'));
 
 create index if not exists profiles_role_idx on public.profiles (role);
 
@@ -145,10 +164,22 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  if new.role is distinct from old.role
-     or new.is_active is distinct from old.is_active
-     or new.email is distinct from old.email then
-    if current_user in ('anon', 'authenticated', 'authenticator') then
+  -- Only client roles are restricted. The signup trigger, the backfill and the
+  -- admin promotion all run as the privileged migration/owner role, so they are
+  -- not affected.
+  if current_user in ('anon', 'authenticated', 'authenticator') then
+    if tg_op = 'INSERT' then
+      -- A client-created profile may only be a CUSTOMER, and may not arrive
+      -- pre-deactivated. (The column grants already forbid client INSERT; this is
+      -- the grant-independent backstop.)
+      if new.role is distinct from 'CUSTOMER'
+         or coalesce(new.is_active, true) is distinct from true then
+        raise exception
+          'Expresso: new profiles must be created with role CUSTOMER and is_active true';
+      end if;
+    elsif new.role is distinct from old.role
+       or new.is_active is distinct from old.is_active
+       or new.email is distinct from old.email then
       raise exception
         'Expresso: role, is_active and email are server-managed on public.profiles';
     end if;
@@ -162,6 +193,11 @@ revoke all on function public.guard_profile_role() from public;
 drop trigger if exists profiles_guard_role on public.profiles;
 create trigger profiles_guard_role
   before update on public.profiles
+  for each row execute function public.guard_profile_role();
+
+drop trigger if exists profiles_guard_role_insert on public.profiles;
+create trigger profiles_guard_role_insert
+  before insert on public.profiles
   for each row execute function public.guard_profile_role();
 
 -- ---------------------------------------------------------------------------
@@ -210,6 +246,23 @@ select
   u.email
 from auth.users u
 on conflict (id) do nothing;
+
+-- Surface any auth user the backfill could not turn into a profile, instead of
+-- failing later inside a signup or a policy check.
+do $$
+declare
+  v_missing int;
+begin
+  select count(*) into v_missing
+  from auth.users u
+  where not exists (select 1 from public.profiles p where p.id = u.id);
+
+  if v_missing > 0 then
+    raise warning
+      'Expresso migration: % auth.users row(s) have no public.profiles row after '
+      'backfill; they will still be provisioned by the signup trigger.', v_missing;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- 5. role helper — SECURITY DEFINER so it can read profiles without tripping
@@ -422,9 +475,24 @@ begin
       'strength of the configured id only.', v_admin;
   end if;
 
-  insert into public.profiles (id, role, full_name)
-  values (v_admin, 'RETAILER_ADMIN', 'Authorized Retailer Admin')
+  -- Promote the verified account. Only `role` is ever changed: an existing
+  -- profile keeps its full_name, msisdn, email and is_active, and a missing
+  -- profile is created with null contact fields (which is why section 1 drops
+  -- the NOT NULL on full_name/msisdn).
+  insert into public.profiles (id, role)
+  values (v_admin, 'RETAILER_ADMIN')
   on conflict (id) do update set role = 'RETAILER_ADMIN';
+
+  -- Post-condition: the authorized account must end this migration with the
+  -- RETAILER_ADMIN role, or the whole transaction rolls back.
+  if not exists (
+    select 1 from public.profiles
+    where id = v_admin and role = 'RETAILER_ADMIN'
+  ) then
+    raise exception
+      'Expresso migration: retailer-admin % was not promoted to RETAILER_ADMIN',
+      v_admin;
+  end if;
 end $$;
 
 -- ---------------------------------------------------------------------------

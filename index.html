@@ -4,8 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>Expresso — Pakistan Telecom &amp; Lifestyle</title>
-  <meta name="theme-color" content="#00695c">
-  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
   <link rel="manifest" href="./manifest.json">
   <style>
     :root {
@@ -152,6 +150,13 @@
     }
     .nav-btn.active { color: var(--primary); }
   </style>
+  <!-- Load Supabase JS v2 SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = "https://ryimialrkhmnceupzptg.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_UFoJamn09mmH7HLChSzuJg_1LXj1IIq";
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  </script>
 </head>
 <body>
 <div id="app">
@@ -185,6 +190,7 @@
 <script>
   const DEFAULT_STATE = {
     auth: false,
+    userId: null,
     userName: "Customer",
     msisdn: "+923001234567",
     role: "CUSTOMER",
@@ -199,108 +205,47 @@
     streak: 4,
     claimedToday: false,
     history: [
-      { id: "EXP-RCH-8842", type: "Top-up", amt: 1000, desc: "Sandbox Wallet Top-up" }
+      { id: "EXP-RCH-8842", type: "Top-up", amt: 1000, desc: "Wallet Top-up" }
     ],
     aiChat: [
       { sender: "Expresso", text: "Assalam-o-Alaikum! Main Expresso AI Assistant hoon. Mujh se apnay balance ya packages ke baray mein Roman Urdu mein poochein." }
     ]
   };
 
-  const ROUTES = ["home", "packages", "discover", "activity", "profile", "ai", "recharge"];
-  const CATEGORIES = ["ALL", "DAILY", "WEEKLY", "MONTHLY", "CALL", "SOCIAL"];
-
-  // localStorage is untrusted input: it is editable by anyone with access to the
-  // device and can hold values written by an older release. Every field is coerced
-  // to a known-good shape before render() runs, because a single malformed value
-  // (e.g. sims: null) would otherwise throw inside render() and blank the whole app.
-  function sanitizeSim(raw) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    return {
-      num: typeof raw.num === "string" ? raw.num : "",
-      name: typeof raw.name === "string" ? raw.name : "SIM",
-      bal: safeNumber(raw.bal),
-      dataMb: safeNumber(raw.dataMb),
-      totMb: safeNumber(raw.totMb),
-      mins: safeNumber(raw.mins),
-      sms: safeNumber(raw.sms)
-    };
-  }
-
-  function sanitizeState(stored) {
-    const next = Object.assign({}, DEFAULT_STATE);
-    if (!stored || typeof stored !== "object" || Array.isArray(stored)) return next;
-
-    next.auth = stored.auth === true;
-    if (typeof stored.userName === "string") next.userName = stored.userName;
-    if (typeof stored.role === "string") next.role = stored.role;
-    if (typeof stored.msisdn === "string") next.msisdn = stored.msisdn;
-    next.tasbeeh = Math.max(0, Math.floor(safeNumber(stored.tasbeeh)));
-    next.streak = Math.max(0, Math.floor(safeNumber(stored.streak)));
-    next.claimedToday = stored.claimedToday === true;
-    next.route = ROUTES.includes(stored.route) ? stored.route : DEFAULT_STATE.route;
-    next.selectedCat = CATEGORIES.includes(stored.selectedCat) ? stored.selectedCat : DEFAULT_STATE.selectedCat;
-
-    const sims = Array.isArray(stored.sims) ? stored.sims.map(sanitizeSim).filter(Boolean) : [];
-    next.sims = sims.length > 0 ? sims : DEFAULT_STATE.sims.map(s => Object.assign({}, s));
-    next.selectedSim = next.sims.some(s => s.num === stored.selectedSim)
-      ? stored.selectedSim
-      : next.sims[0].num;
-
-    next.history = stored.history === undefined
-      ? DEFAULT_STATE.history.map(h => Object.assign({}, h))
-      : (Array.isArray(stored.history) ? stored.history : [])
-        .filter(h => h && typeof h === "object")
-        .map(h => ({
-          id: String(h.id ?? ""),
-          type: String(h.type ?? ""),
-          amt: safeNumber(h.amt),
-          desc: String(h.desc ?? "")
-        }));
-
-    const chat = Array.isArray(stored.aiChat) ? stored.aiChat : null;
-    const cleanChat = chat
-      ? chat.filter(m => m && typeof m === "object")
-        .map(m => ({ sender: String(m.sender ?? ""), text: String(m.text ?? "") }))
-      : [];
-    next.aiChat = cleanChat.length > 0
-      ? cleanChat
-      : DEFAULT_STATE.aiChat.map(m => Object.assign({}, m));
-
-    return next;
-  }
-
-  let state;
+  let state = Object.assign({}, DEFAULT_STATE);
   try {
     const raw = localStorage.getItem("expresso_app_state");
-    state = sanitizeState(raw ? JSON.parse(raw) : null);
-  } catch(e) {
-    // Corrupt JSON or unavailable storage: fall back to the default state.
-    state = sanitizeState(null);
-  }
-
-  // All values interpolated into HTML must be escaped, including values loaded from localStorage.
-  function escapeHtml(value) {
-    return String(value ?? "").replace(/[&<>"']/g, ch => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    })[ch]);
-  }
-
-  function safeNumber(value, fallback = 0) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-  }
+    if (raw) state = Object.assign({}, DEFAULT_STATE, JSON.parse(raw));
+  } catch(e) {}
 
   function save() {
     try { localStorage.setItem("expresso_app_state", JSON.stringify(state)); } catch(e) {}
   }
 
-  const PACKAGES = [
-    { id: "p1", name: "Daily Super Internet", cat: "DAILY", pkr: 65, mb: 2048, mins: 200, valid: "1 Day" },
-    { id: "p2", name: "Weekly Mega Pro", cat: "WEEKLY", pkr: 430, mb: 15360, mins: 1000, valid: "7 Days" },
-    { id: "p3", name: "Monthly Supreme 40GB", cat: "MONTHLY", pkr: 1350, mb: 40960, mins: 3000, valid: "30 Days" },
-    { id: "p4", name: "Weekly Voice Plus", cat: "CALL", pkr: 240, mb: 512, mins: 1500, valid: "7 Days" },
-    { id: "p5", name: "Social WhatsApp & YT", cat: "SOCIAL", pkr: 195, mb: 10240, mins: 100, valid: "7 Days" }
+  let PACKAGES = [
+    { id: "p1", title: "Daily Super Internet", category: "DAILY", price_pkr: 65, data_mb: 2048, minutes: 200, validity_days: 1 },
+    { id: "p2", title: "Weekly Mega Pro", category: "WEEKLY", price_pkr: 430, data_mb: 15360, minutes: 1000, validity_days: 7 },
+    { id: "p3", title: "Monthly Supreme 40GB", category: "MONTHLY", price_pkr: 1350, data_mb: 40960, minutes: 3000, validity_days: 30 },
+    { id: "p4", title: "Weekly Voice Plus", category: "CALL", price_pkr: 240, data_mb: 512, minutes: 1500, validity_days: 7 },
+    { id: "p5", title: "Social WhatsApp & YT", category: "SOCIAL", price_pkr: 195, data_mb: 10240, minutes: 100, validity_days: 7 }
   ];
+
+  // Fetch live packages from Supabase
+  async function loadLivePackages() {
+    try {
+      const { data, error } = await supabaseClient
+        .from('packages')
+        .select('*')
+        .eq('is_enabled', true)
+        .order('price_pkr', { ascending: true });
+      if (!error && data && data.length > 0) {
+        PACKAGES = data;
+        render();
+      }
+    } catch (e) {
+      console.warn("Using offline fallback packages:", e);
+    }
+  }
 
   function getActiveSim() {
     return state.sims.find(s => s.num === state.selectedSim) || state.sims[0];
@@ -312,37 +257,36 @@
     render();
   }
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
   function render() {
     const nav = document.getElementById("bottomNav");
     const topAction = document.getElementById("topAction");
     const main = document.getElementById("mainContent");
-
-    // setRoute() accepts any string (it is also reachable from inline handlers),
-    // so an unknown route must degrade to Home instead of rendering nothing.
-    if (!ROUTES.includes(state.route)) state.route = "home";
 
     if (!state.auth) {
       nav.style.display = "none";
       topAction.innerHTML = "";
       main.innerHTML = `
         <div class="card notice">
-          <b>TEST AUTHENTICATION MODE</b>: Enter any Pakistani number (e.g. 03001234567) and use test OTP: <b>482910</b>.
+          <b>SUPABASE AUTHENTICATION</b>: Enter your name, Pakistani mobile number (+923XXXXXXXXX or 03XXXXXXXXX), and password to sign up or sign in securely.
         </div>
         <div class="card">
-          <h2 style="margin:0 0 12px;font-size:18px;">Sign In to Expresso</h2>
-          <label style="font-size:12px;font-weight:700;">Your Name</label>
-          <input id="loginName" value="${escapeHtml(state.userName)}" placeholder="Hamza Tariq" />
-          <label style="font-size:12px;font-weight:700;">Mobile Number (+92)</label>
-          <input id="loginNum" value="03001234567" placeholder="03001234567" />
-          <div style="margin:8px 0 14px;">
-            <label style="font-size:12px;"><input type="checkbox" id="adminCheck"> Sign in as Retailer Admin (PIN: EXP-ADMIN-2026)</label>
+          <h2 style="margin:0 0 12px;font-size:18px;">Sign In / Sign Up to Expresso</h2>
+          <label style="font-size:12px;font-weight:700;">Your Full Name</label>
+          <input id="authName" value="${escapeHtml(state.userName)}" placeholder="Hamza Tariq" />
+          <label style="font-size:12px;font-weight:700;">Mobile Number (+923XXXXXXXXX)</label>
+          <input id="authNum" value="03001234567" placeholder="03001234567" />
+          <label style="font-size:12px;font-weight:700;">Password</label>
+          <input id="authPass" type="password" placeholder="At least 6 characters" />
+          <div id="authError" style="color:#d32f2f;font-size:12px;margin-bottom:8px;display:none;"></div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn" style="flex:1;" onclick="handleSupabaseSignUp()">Sign Up</button>
+            <button class="btn outline" style="flex:1;" onclick="handleSupabaseSignIn()">Sign In</button>
           </div>
-          <div id="otpSection" style="display:none;">
-            <label style="font-size:12px;font-weight:700;">Verification OTP (Test: 482910)</label>
-            <input id="otpCode" placeholder="482910" />
-            <button class="btn" style="width:100%;margin-top:6px;" onclick="verifyOtp()">Verify OTP &amp; Launch App</button>
-          </div>
-          <button id="sendOtpBtn" class="btn" style="width:100%;" onclick="requestOtp()">Send Verification OTP (+92)</button>
         </div>
       `;
       return;
@@ -366,15 +310,15 @@
             <div style="font-size:18px;font-weight:800;">${escapeHtml(state.userName)}</div>
           </div>
           <select style="width:auto;margin:0;padding:6px 10px;font-size:12px;" onchange="state.selectedSim=this.value;save();render();">
-            ${state.sims.map(s => `<option value="${escapeHtml(s.num)}" ${s.num===state.selectedSim?'selected':''}>${escapeHtml(s.name)} (${escapeHtml(s.num)})</option>`).join("")}
+            ${state.sims.map(s => `<option value="${s.num}" ${s.num===state.selectedSim?'selected':''}>${s.name} (${s.num})</option>`).join("")}
           </select>
         </div>
 
         <div class="card primary-box">
           <div class="text-muted" style="font-size:12px;font-weight:600;">SIMULATED BALANCE</div>
-          <div style="font-size:32px;font-weight:800;margin:6px 0;">PKR ${safeNumber(sim.bal).toFixed(2)}</div>
+          <div style="font-size:32px;font-weight:800;margin:6px 0;">PKR ${sim.bal.toFixed(2)}</div>
           <div class="row">
-            <span class="text-muted" style="font-size:11px;">Active SIM: ${escapeHtml(sim.num)}</span>
+            <span class="text-muted" style="font-size:11px;">Active SIM: ${sim.num}</span>
             <button class="btn" style="background:#fff;color:var(--primary);padding:6px 12px;font-size:12px;" onclick="setRoute('recharge')">+ Recharge</button>
           </div>
         </div>
@@ -383,16 +327,16 @@
           <div class="card">
             <div class="row"><b>Active Bundles</b><span class="badge">Valid 22 Days</span></div>
             <div style="margin-top:12px;">
-              <div class="row" style="font-size:12px;"><span>Internet Data</span><b>${(safeNumber(sim.dataMb)/1024).toFixed(1)} GB / ${(safeNumber(sim.totMb)/1024).toFixed(1)} GB</b></div>
-              <div class="progress-track"><div class="progress-fill" style="width:${Math.max(0, Math.min(100, safeNumber(sim.dataMb) / Math.max(1, safeNumber(sim.totMb)) * 100))}%"></div></div>
+              <div class="row" style="font-size:12px;"><span>Internet Data</span><b>${(sim.dataMb/1024).toFixed(1)} GB / ${(sim.totMb/1024).toFixed(1)} GB</b></div>
+              <div class="progress-track"><div class="progress-fill" style="width:${(sim.dataMb/sim.totMb)*100}%"></div></div>
             </div>
             <div style="margin-top:10px;">
-              <div class="row" style="font-size:12px;"><span>Voice Minutes</span><b>${safeNumber(sim.mins)} Mins remaining</b></div>
+              <div class="row" style="font-size:12px;"><span>Voice Minutes</span><b>${sim.mins} Mins remaining</b></div>
             </div>
           </div>
         ` : `
           <div class="card" style="border-style:dashed;">
-            <b>No Active Bundle on ${escapeHtml(sim.num)}</b>
+            <b>No Active Bundle on ${sim.num}</b>
             <p style="font-size:12px;color:var(--text-2);margin:4px 0 10px;">Base rates se bachne ke liye naya bundle lagayein.</p>
             <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="setRoute('packages')">Explore Recommended Bundles</button>
           </div>
@@ -402,15 +346,15 @@
           <div class="row">
             <div>
               <b style="font-size:14px;">Daily Streak Reward</b>
-              <div style="font-size:12px;color:var(--text-2);">Day ${safeNumber(state.streak)} • 72-Hour Bonus MB</div>
+              <div style="font-size:12px;color:var(--text-2);">Day ${state.streak} • 72-Hour Bonus MB</div>
             </div>
             <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="claimStreak()" ${state.claimedToday?'disabled':''}>${state.claimedToday?'Claimed':'Check In'}</button>
           </div>
         </div>
       `;
     } else if (state.route === "packages") {
-      const cats = CATEGORIES;
-      const list = PACKAGES.filter(p => state.selectedCat === "ALL" || p.cat === state.selectedCat);
+      const cats = ["ALL", "DAILY", "WEEKLY", "MONTHLY", "CALL", "SOCIAL"];
+      const list = PACKAGES.filter(p => state.selectedCat === "ALL" || p.category === state.selectedCat);
       main.innerHTML = `
         <h2 style="margin:0 0 10px;font-size:18px;">Bundles Explorer</h2>
         <div class="chips-row">
@@ -418,9 +362,9 @@
         </div>
         ${list.map(p => `
           <div class="card">
-            <div class="row"><b style="font-size:15px;">${p.name}</b><span class="badge">PKR ${p.pkr}</span></div>
-            <p style="font-size:12px;color:var(--text-2);margin:6px 0 10px;">${(p.mb/1024).toFixed(1)} GB Data • ${p.mins} Mins • ${p.valid}</p>
-            <button class="btn" style="width:100%;font-size:12.5px;" onclick="subscribePkg('${p.id}')">Subscribe (PKR ${p.pkr})</button>
+            <div class="row"><b style="font-size:15px;">${escapeHtml(p.title)}</b><span class="badge">PKR ${p.price_pkr}</span></div>
+            <p style="font-size:12px;color:var(--text-2);margin:6px 0 10px;">${(p.data_mb/1024).toFixed(1)} GB Data • ${p.minutes} Mins • ${p.validity_days} Days</p>
+            <button class="btn" style="width:100%;font-size:12.5px;" onclick="subscribePkg('${p.id}')">Subscribe (PKR ${p.price_pkr})</button>
           </div>
         `).join("")}
       `;
@@ -429,7 +373,7 @@
         <h2 style="margin:0 0 10px;font-size:18px;">Sandbox Top-up</h2>
         <div class="card">
           <label style="font-size:12px;font-weight:700;">Recipient Number</label>
-          <input id="rchNum" value="${escapeHtml(sim.num)}" />
+          <input id="rchNum" value="${sim.num}" />
           <label style="font-size:12px;font-weight:700;">Amount in PKR</label>
           <input id="rchAmt" type="number" value="500" />
           <div class="chips-row">
@@ -444,7 +388,7 @@
         <div class="card">
           <span class="badge">FAITH &amp; DHIKR</span>
           <h3 style="margin:8px 0 4px;font-size:16px;">Interactive Digital Tasbeeh</h3>
-          <div style="font-size:32px;font-weight:800;color:var(--primary);margin:6px 0;">${safeNumber(state.tasbeeh)} / 33</div>
+          <div style="font-size:32px;font-weight:800;color:var(--primary);margin:6px 0;">${state.tasbeeh} / 33</div>
           <div style="display:flex;gap:8px;">
             <button class="btn" onclick="state.tasbeeh+=1;save();render();">+1 SubhanAllah</button>
             <button class="btn outline" onclick="state.tasbeeh=0;save();render();">Reset</button>
@@ -460,7 +404,7 @@
       main.innerHTML = `
         <h2 style="margin:0 0 10px;font-size:18px;">Recent Activity</h2>
         <div class="card">
-          <b>7-Day Telecom Usage Record (${escapeHtml(sim.num)})</b>
+          <b>7-Day Telecom Usage Record (${sim.num})</b>
           <div style="margin-top:10px;font-size:12.5px;">
             <div class="row"><span>Data Usage</span><b>4.8 GB</b></div>
             <div class="row" style="margin-top:6px;"><span>Voice Minutes</span><b>142 Mins</b></div>
@@ -470,8 +414,8 @@
         <h3 style="font-size:15px;margin:12px 0 8px;">Transaction Receipts</h3>
         ${state.history.map(h => `
           <div class="card" style="padding:12px;">
-            <div class="row"><b>${escapeHtml(h.type)}</b><span class="badge">PKR ${escapeHtml(h.amt)}</span></div>
-            <div style="font-size:11px;color:var(--text-2);margin-top:4px;">Ref: ${escapeHtml(h.id)} • ${escapeHtml(h.desc)}</div>
+            <div class="row"><b>${escapeHtml(h.type)}</b><span class="badge">PKR ${h.amt}</span></div>
+            <div style="font-size:11px;color:var(--text-2);margin-top:4px;">Ref: ${escapeHtml(h.id)} •${escapeHtml(h.desc)}</div>
           </div>
         `).join("")}
       `;
@@ -507,41 +451,142 @@
     }
   }
 
-  function requestOtp() {
-    document.getElementById("otpSection").style.display = "block";
-    document.getElementById("sendOtpBtn").style.display = "none";
+  function normalizeMsisdn(input) {
+    let cleaned = (input || '').replace(/[\s\-\(\)\.]/g, '');
+    if (/^03[0-9]{9}$/.test(cleaned)) {
+      cleaned = '+92' + cleaned.substring(1);
+    } else if (/^923[0-9]{9}$/.test(cleaned)) { cleaned = '+' + cleaned; } else if (/^00923[0-9]{9}$/.test(cleaned)) {
+      cleaned = '+' + cleaned.substring(2);
+    }
+    return cleaned;
   }
 
-  function verifyOtp() {
-    const name = document.getElementById("loginName").value;
-    const num = document.getElementById("loginNum").value;
-    const otp = document.getElementById("otpCode").value;
-    const isAdmin = document.getElementById("adminCheck").checked;
-
-    if (otp.trim() === "482910") {
-      state.auth = true;
-      state.userName = name || "Customer";
-      state.selectedSim = num.startsWith("+92") ? num : "+92" + num.replace(/^0/, "");
-      state.role = isAdmin ? "RETAILER_ADMIN" : "CUSTOMER";
-      state.route = "home";
-      save();
-      render();
+  function showAuthError(msg) {
+    const errBox = document.getElementById("authError");
+    if (errBox) {
+      errBox.innerText = msg;
+      errBox.style.display = "block";
     } else {
-      alert("Invalid test OTP! Please enter 482910.");
+      alert(msg);
     }
   }
 
-  function subscribePkg(pid) {
+  async function handleSupabaseSignUp() {
+    const name = document.getElementById("authName").value.trim() || "Customer";
+    const rawNum = document.getElementById("authNum").value.trim();
+    const password = document.getElementById("authPass").value;
+
+    const msisdn = normalizeMsisdn(rawNum);
+    if (!/^\+923[0-9]{9}$/.test(msisdn)) {
+      showAuthError("Invalid Pakistani mobile number. Please enter in +923XXXXXXXXX or 03XXXXXXXXX format.");
+      return;
+    }
+    if (!password || password.length < 6) {
+      showAuthError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    const syntheticEmail = msisdn.replace('+', '') + '@expresso.pk';
+
+    try {
+      const { data, error } = await supabaseClient.auth.signUp({
+        email: syntheticEmail,
+        password: password,
+        options: {
+          data: {
+            full_name: name,
+            msisdn: msisdn
+          }
+        }
+      });
+
+      if (error) {
+        showAuthError(error.message);
+        return;
+      }
+
+      if (data && data.user) {
+        await fetchUserProfileAndLogin(data.user.id, msisdn, name);
+      }
+    } catch (e) {
+      showAuthError("Signup failed: " + e.message);
+    }
+  }
+
+  async function handleSupabaseSignIn() {
+    const rawNum = document.getElementById("authNum").value.trim();
+    const password = document.getElementById("authPass").value;
+
+    const msisdn = normalizeMsisdn(rawNum);
+    if (!/^\+923[0-9]{9}$/.test(msisdn)) {
+      showAuthError("Invalid Pakistani mobile number format.");
+      return;
+    }
+
+    const syntheticEmail = msisdn.replace('+', '') + '@expresso.pk';
+
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: syntheticEmail,
+        password: password
+      });
+
+      if (error) {
+        showAuthError(error.message);
+        return;
+      }
+
+      if (data && data.user) {
+        await fetchUserProfileAndLogin(data.user.id, msisdn, data.user.user_metadata?.full_name || "Customer");
+      }
+    } catch (e) {
+      showAuthError("Sign in failed: " + e.message);
+    }
+  }
+
+  async function fetchUserProfileAndLogin(userId, msisdn, defaultName) {
+    let role = "CUSTOMER";
+    let userName = defaultName;
+
+    try {
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .select('full_name, role, msisdn')
+        .eq('id', userId)
+        .single();
+      if (!error && data) {
+        userName = data.full_name || userName;
+        role = data.role || role;
+      }
+    } catch (e) {
+      console.warn("Could not fetch profile, using defaults:", e);
+    }
+
+    state.auth = true;
+    state.userId = userId;
+    state.userName = userName;
+    state.role = role;
+    state.selectedSim = msisdn;
+    if (!state.sims.some(s => s.num === msisdn)) {
+      state.sims.unshift({ num: msisdn, name: "Primary SIM", bal: 500, dataMb: 5120, totMb: 10240, mins: 500, sms: 1000 });
+    }
+    state.route = "home";
+    save();
+    render();
+  }
+
+  async function subscribePkg(pid) {
     const pkg = PACKAGES.find(p => p.id === pid);
     const sim = getActiveSim();
-    if (sim.bal >= pkg.pkr) {
-      sim.bal -= pkg.pkr;
-      sim.dataMb = (sim.dataMb || 0) + pkg.mb;
-      sim.totMb = (sim.totMb || 0) + pkg.mb;
-      sim.mins = (sim.mins || 0) + pkg.mins;
-      state.history.unshift({ id: "EXP-SUB-" + Math.floor(1000 + Math.random()*9000), type: "Bundle Activation", amt: pkg.pkr, desc: pkg.name });
+    if (!pkg) return;
+    if (sim.bal >= pkg.price_pkr) {
+      sim.bal -= pkg.price_pkr;
+      sim.dataMb = (sim.dataMb || 0) + pkg.data_mb;
+      sim.totMb = (sim.totMb || 0) + pkg.data_mb;
+      sim.mins = (sim.mins || 0) + pkg.minutes;
+      state.history.unshift({ id: "EXP-SUB-" + Math.floor(1000 + Math.random()*9000), type: "Bundle Activation", amt: pkg.price_pkr, desc: pkg.title });
       save();
-      alert("Bundle " + pkg.name + " successfully activated!");
+      alert("Bundle " + pkg.title + " successfully activated!");
       setRoute("home");
     } else {
       alert("Insufficient balance! Please recharge your account first.");
@@ -565,54 +610,33 @@
     state.claimedToday = true;
     save();
     render();
-      alert("Day " + state.streak + " streak bonus claimed! Valid for 72 hours.");
+    alert("Day " + state.streak + " streak bonus claimed! Valid for 72 hours.");
   }
 
-          function logout() {
-  state.auth = false;
-  state.route = "home";
-  save();
-  render();
-}
+  async function logout() {
+    try {
+      await supabaseClient.auth.signOut();
+    } catch(e) {}
+    state.auth = false;
+    state.userId = null;
+    state.route = "home";
+    save();
+    render();
+  }
 
-function askAi(question) {
-  state.aiChat.push({ sender: "You", text: question });
-  state.aiChat.push({
-    sender: "Expresso",
-    text: "Main Expresso demo assistant hoon. Aap apna sawal pooch sakte hain."
-  });
-  save();
-  render();
-}
-
-render();
-
-  // Register the same-origin service worker for installability and offline app-shell caching.
-  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js", { scope: "./" })
-        .catch(error => console.warn("Expresso offline support could not be enabled:", error));
+  function askAi(question) {
+    state.aiChat.push({ sender: "You", text: question });
+    state.aiChat.push({
+      sender: "Expresso",
+      text: "Main Expresso demo assistant hoon. Aap apna sawal pooch sakte hain."
     });
+    save();
+    render();
   }
-</script>
-  <!-- Pinned to an exact version with an SRI digest so the CDN cannot silently
-       change the code that runs in users' browsers. crossorigin is required for
-       the integrity check to be enforced on a cross-origin script. -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js"
-          integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK"
-          crossorigin="anonymous"></script>
-<script>
-const SUPABASE_URL = "https://ryimialrkhmnceupzptg.supabase.co";
-const SUPABASE_KEY = "sb_publishable_UFoJamn09mmH7HLChSzuJg_1LXj1IIq";
 
-// Supabase's CDN library is not part of the offline app shell. Keep the app usable
-// when offline; backend integration is handled separately from this frontend-hardening chapter.
-let supabaseClient = null;
-if (window.supabase && typeof window.supabase.createClient === "function") {
-  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-} else {
-  console.warn("Supabase client library is unavailable; offline app-shell mode remains available.");
-}
+  // Initialize app and load live packages
+  loadLivePackages();
+  render();
 </script>
 </body>
 </html>

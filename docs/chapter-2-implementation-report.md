@@ -247,7 +247,60 @@ production changes and migration execution.
 
 ---
 
-## 8. How to review
+## 8. Addendum — focused fix for C-1 (Chapter 2 completion pass)
+
+A second, smaller migration was added so the live finding can be closed without
+depending on the large base migration:
+
+`supabase/migrations/20261018120000_packages_anon_select_fix.sql`
+
+It does three things and nothing else:
+
+1. `alter table ... enable row level security` on `packages` and `profiles`.
+2. `revoke all on public.packages/public.profiles from anon, public` — the REVOKE is what
+   actually denies the read, since a role without `SELECT` cannot read the table
+   regardless of policy.
+3. An explicit `packages_anon_no_select` policy (`for select to anon using (false)`) so the
+   denial is visible in `pg_policies`, plus `DO` post-conditions that raise if any `anon`
+   privilege survives.
+
+It is additive, idempotent, and data-preserving (no `DROP`, `TRUNCATE`, `DELETE`, or column
+change). It is a no-op when the base migration has already removed anonymous access, and it
+also works standalone.
+
+### 8.1 Regression test added
+
+`tests/packages-anon-select.test.mjs` (wired as `npm run test:anon`) reproduces the live
+condition in PGlite — a permissive `using (true)` policy plus a table-level `SELECT` grant to
+`anon` — and asserts:
+
+- the precondition really leaks (C-1 reproduced);
+- after the fix, `anon` reads zero rows and holds no privilege;
+- the explicit deny policy exists;
+- authenticated users still read the catalogue and still hold `SELECT`;
+- rows are preserved and the migration is idempotent;
+- both migration orders (base→fix and fix→base) leave `anon` without access.
+
+### 8.2 Updated totals
+
+`npm test` now reports **209 passed, 0 failed** (was 195): the new suite adds 14 checks.
+`npm run test:api-authz` still reports **7 passed, 2 failed** — the live project has not been
+changed, so C-1 remains open in production until the migration is applied.
+
+### 8.3 Live state re-verified (read-only)
+
+Using only the public publishable key:
+
+- `GET /rest/v1/packages` → HTTP 200, 5 rows (C-1 confirmed still open).
+- `GET /rest/v1/profiles` → HTTP 200, `[]` (anon correctly blocked).
+- `profiles.is_active`, `profiles.email`, `profiles.phone`, `profiles.updated_at` → HTTP 400
+  `42703 column does not exist` (H-3 schema drift confirmed; the migration adds them).
+
+Only `packages` leaks; no other application table was reachable by the anonymous role.
+
+---
+
+## 9. How to review
 
 ```bash
 git checkout chapter-2/final-report

@@ -400,20 +400,21 @@
   async function loadProfile() {
     const user = state.session && state.session.user;
     if (!user) { state.profile = null; return; }
+
+    // Match the verified production schema. Do not select is_active until a
+    // reviewed migration adds that column; a missing column makes the entire
+    // PostgREST query fail and silently hides the trusted database profile.
     const { data, error } = await supabaseClient
       .from("profiles")
-      .select("id, role, full_name, msisdn, is_active")
+      .select("id, role, full_name, msisdn")
       .eq("id", user.id)
       .maybeSingle();
+
     if (error || !data) {
-      // Never trust client-side role data: fall back to the least privilege.
-      state.profile = {
-        id: user.id,
-        role: "CUSTOMER",
-        full_name: (user.user_metadata && user.user_metadata.full_name) || null,
-        msisdn: (user.user_metadata && user.user_metadata.msisdn) || null,
-        is_active: true
-      };
+      // Fail closed: do not synthesize a profile or trust user_metadata for
+      // role/display data when the authoritative profile could not be loaded.
+      state.profile = null;
+      if (error) console.error("Expresso profile could not be loaded.");
       return;
     }
     state.profile = data;

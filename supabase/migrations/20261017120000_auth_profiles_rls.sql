@@ -54,6 +54,10 @@ alter table public.profiles add column if not exists is_active  boolean not null
 -- phone is groundwork for the phone-OTP identity design (Chapter 2, section 3).
 -- It is additive and nullable, so existing rows are untouched.
 alter table public.profiles add column if not exists phone      text;
+-- Allow missing optional contact details in existing profiles.
+alter table public.profiles
+  alter column full_name DROP NOT NULL,
+  alter column msisdn DROP NOT NULL;
 
 -- Normalise any legacy/invalid role values before locking the domain down.
 update public.profiles set role = 'CUSTOMER'
